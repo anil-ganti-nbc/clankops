@@ -1,0 +1,4292 @@
+{
+  "census_version": 1,
+  "scanned_at_utc": "2026-09-09T23:09:03Z",
+  "provenance": {
+    "scanner": "clankops.census",
+    "mode": "read-only",
+    "notes": [
+      "Bootstrap reconstruction, not live ClankOps history.",
+      "Dirty repositories were observed, not cleaned.",
+      "Secret files were detected by name only and never read.",
+      "Facts in this artefact predate ClankOps and must be imported as RECONSTRUCTED."
+    ],
+    "github_error": null
+  },
+  "roots": [
+    "C:\\Users\\anil\\Clanks",
+    "C:\\Users\\anil\\Desktop",
+    "C:\\Users\\anil\\Documents\\Default Project",
+    "C:\\Users\\anil\\dau-ecosystem",
+    "C:\\Users\\anil\\Clank Base",
+    "C:\\Users\\anil\\chudbox"
+  ],
+  "counts": {
+    "UNKNOWN": 13,
+    "VERIFIED": 17,
+    "PROBABLE": 5,
+    "SUPPORT_COMPONENT": 13,
+    "NEEDS_RECONSTRUCTION": 1,
+    "NOT_A_CLANK": 14,
+    "total_candidates": 63,
+    "dirty_repositories": 16,
+    "github_backed": 38,
+    "local_only": 25,
+    "duplicate_identity_groups": 8
+  },
+  "duplicates": [
+    {
+      "identity": "anil-ganti-nbc/clank-architecture",
+      "paths": [
+        "C:\\Users\\anil\\Clanks\\clank-architecture",
+        "C:\\Users\\anil\\Documents\\Default Project\\clank-architecture"
+      ]
+    },
+    {
+      "identity": "anil-ganti-nbc/feature-phone-clank",
+      "paths": [
+        "C:\\Users\\anil\\Clanks\\feature-phone-clank",
+        "C:\\Users\\anil\\Documents\\Default Project\\feature-phone-clank"
+      ]
+    },
+    {
+      "identity": "anil-ganti-nbc/korean-tech-wire",
+      "paths": [
+        "C:\\Users\\anil\\Clanks\\korean-tech-wire",
+        "C:\\Users\\anil\\Documents\\Default Project\\korean-tech-wire"
+      ]
+    },
+    {
+      "identity": "anil-ganti-nbc/smartphone-clank",
+      "paths": [
+        "C:\\Users\\anil\\Clanks\\smartphone-clank",
+        "C:\\Users\\anil\\Documents\\Default Project\\smartphone-clank"
+      ]
+    },
+    {
+      "identity": "anil-ganti-nbc/smartwatch-clank",
+      "paths": [
+        "C:\\Users\\anil\\Clanks\\smartwatch-clank",
+        "C:\\Users\\anil\\Documents\\Default Project\\smartwatch-clank"
+      ]
+    },
+    {
+      "identity": "anil-ganti-nbc/tablet-clank",
+      "paths": [
+        "C:\\Users\\anil\\Clanks\\tablet-clank",
+        "C:\\Users\\anil\\Documents\\Default Project\\tablet-clank"
+      ]
+    },
+    {
+      "identity": "anil-ganti-nbc/watch-clank",
+      "paths": [
+        "C:\\Users\\anil\\Clanks\\watch-clank",
+        "C:\\Users\\anil\\Desktop\\Watch clank\\watch-clank"
+      ]
+    },
+    {
+      "identity": "anil-ganti-nbc/chudbox",
+      "paths": [
+        "C:\\Users\\anil\\dau-ecosystem\\repos\\chudbox",
+        "C:\\Users\\anil\\chudbox"
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "clanks",
+      "slug": "clanks",
+      "display_name": "Clanks",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Clanks",
+      "discovery_group": "clanks_root_dir",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "UNKNOWN",
+      "evidence": [
+        "no git, README, or project config"
+      ],
+      "confidence": "low",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "chinese-tech-wire",
+      "slug": "chinese-tech-wire",
+      "display_name": "Chinese Tech Wire — V0.1",
+      "aliases": [
+        "ctw",
+        "chinese tech wire"
+      ],
+      "local_path": "C:\\Users\\anil\\Clanks\\chinese-tech-wire",
+      "discovery_group": "clanks_root",
+      "readme_heading": "Chinese Tech Wire — V0.1",
+      "readme_excerpt": [
+        "# Chinese Tech Wire — V0.1",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** See",
+        "> [`PHASE0_CONTAINMENT.md`](PHASE0_CONTAINMENT.md); historical secret scanning",
+        "> and credential rotation remain operator-required before release.",
+        "",
+        "> Status: Staging / additional soak testing required",
+        "",
+        "Lightweight local news discovery tool that monitors major Chinese technology sites, normalizes metadata, scores stories for a hardware/semiconductor journalist, clusters duplicates, and pushes high-value leads to Discord.",
+        "",
+        "**Not an automated writer.** Goal: surface potentially newsworthy Chinese hardware / semiconductor / consumer-tech stories before or shortly after they hit English media.",
+        ""
+      ],
+      "config_files": [
+        "requirements.txt"
+      ],
+      "has_env_file": true,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/chinese-tech-wire.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/chinese-tech-wire.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/chinese-tech-wire.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "f5eed8953adac1ad4c4dbbef42e719ba343d4255",
+      "dirty": true,
+      "dirty_count": 2,
+      "dirty_sample": [
+        " M tests/conftest.py",
+        " M tests/test_translation_cost.py"
+      ],
+      "latest_commit_timestamp": "2026-09-10T04:19:09+05:30",
+      "latest_commit_subject": "feat: translation cost containment - wall, breaker, telemetry, tight caps",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/agent/ctw-enable-field-test-collection",
+        "origin/main",
+        "origin/phase0/containment"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-09-10T04:19:09+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Clanks/chinese-tech-wire\nHEAD f5eed8953adac1ad4c4dbbef42e719ba343d4255\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/chinese-tech-wire.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Chinese Tech Wire — V0.1",
+        "project config: requirements.txt",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Chinese Tech Wire — V0.1",
+      "apparent_status": "UNVERIFIED_PRODUCTION",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml",
+        "PHASE0_CONTAINMENT.md",
+        "HANDOFF.md"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "clank-architecture",
+      "slug": "clank-architecture",
+      "display_name": "Clank Architecture",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Clanks\\clank-architecture",
+      "discovery_group": "clanks_root",
+      "readme_heading": "Clank Architecture",
+      "readme_excerpt": [
+        "# Clank Architecture",
+        "",
+        "## Canonical architecture",
+        "",
+        "[CANONICAL_CLANK_ARCHITECTURE_v0.2.md](CANONICAL_CLANK_ARCHITECTURE_v0.2.md)",
+        "is now the binding integration amendment to v0.1. ADR-0005 ratifies the",
+        "archaeology audits and makes observer-only adapters, instance/lane identity,",
+        "evidence-bearing capabilities, baseline handover, scheduler corroboration, and",
+        "golden incidents mandatory integration gates.",
+        "",
+        "[CANONICAL_CLANK_ARCHITECTURE_v0.1.md](CANONICAL_CLANK_ARCHITECTURE_v0.1.md)",
+        "is the primary normative architecture authority for future Clanks, adapters, and"
+      ],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/clank-architecture.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/clank-architecture.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/clank-architecture.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "e9c4a2b77f0a484171b01980469eee34971f8ee5",
+      "dirty": true,
+      "dirty_count": 1,
+      "dirty_sample": [
+        "?? conformance/__pycache__/test_fleet_laws.cpython-314-pytest-8.4.2.pyc"
+      ],
+      "latest_commit_timestamp": "2026-08-27T04:47:56+05:30",
+      "latest_commit_subject": "closure hygiene: freeze marker + ACT-007/009 closed as superseded",
+      "latest_commit_author": "ox-alpha",
+      "branches": [
+        "main",
+        "origin",
+        "origin/agent/publish-prompt-optimization",
+        "origin/audit/grand-clank-phase1-2026-08-22",
+        "origin/audit/motherclank-diagnostic-boundary-2026-08-31",
+        "origin/f6-adr0006-adr0007-continuity",
+        "origin/main",
+        "origin/phase0/containment",
+        "origin/phase0/governance-label-active"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-27T04:47:56+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Clanks/clank-architecture\nHEAD e9c4a2b77f0a484171b01980469eee34971f8ee5\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/clank-architecture.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Clank Architecture",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Clank Architecture",
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "clankops",
+      "slug": "clankops",
+      "display_name": "ClankOps",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Clanks\\clankops",
+      "discovery_group": "clanks_root",
+      "readme_heading": "ClankOps",
+      "readme_excerpt": [
+        "# ClankOps",
+        "",
+        "Development control plane and institutional memory for the Clank ecosystem.",
+        "",
+        "Foundation 0 is the ledger, not the dashboard. Current state is a projection of an append-only event history. The goal is to make it impossible to lose the state, rationale, outstanding work, or next action of any Clank.",
+        "",
+        "```text",
+        "clankctl brief oem-radar",
+        "```",
+        "",
+        "should answer: what this Clank is, which mission is unfinished, where development stopped, what remains, and — only if someone recorded it — what to do next.",
+        ""
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": true,
+      "dirty_count": 7,
+      "dirty_sample": [
+        "?? .gitignore",
+        "?? README.md",
+        "?? data/",
+        "?? docs/",
+        "?? pyproject.toml",
+        "?? src/",
+        "?? tests/"
+      ],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": "worktree C:/Users/anil/Clanks/clankops\nHEAD 0000000000000000000000000000000000000000\nbranch refs/heads/main",
+      "origin_head_ref": null,
+      "status_branch_line": "## No commits yet on main",
+      "remote": null,
+      "classification": "PROBABLE",
+      "evidence": [
+        "local git repo with Clank-like naming or README"
+      ],
+      "confidence": "medium",
+      "apparent_purpose": "ClankOps",
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "feature-phone-clank",
+      "slug": "feature-phone-clank",
+      "display_name": "Feature Phone Clank",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Clanks\\feature-phone-clank",
+      "discovery_group": "clanks_root",
+      "readme_heading": "Feature Phone Clank",
+      "readme_excerpt": [
+        "# Feature Phone Clank",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** The unauthenticated",
+        "> dashboard is loopback-only and its collection mutation is disabled until an",
+        "> authenticated profile exists.",
+        "",
+        "> Status: Experimental / under construction",
+        "",
+        "Change-detection intelligence for official feature-phone sources (FEATURE-01). Crawls",
+        "HMD's official site (feature-phones and smartphones catalogue listings plus",
+        "`sitemap-dtc.xml`), deterministically classifies each product URL, extracts structured",
+        "spec fields from the page's own embedded data, and persists an append-only observation"
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/feature-phone-clank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/feature-phone-clank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/feature-phone-clank.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "66e721f76f65a197a13597d55cef146149d8d0aa",
+      "dirty": true,
+      "dirty_count": 2,
+      "dirty_sample": [
+        "?? build/",
+        "?? dist/"
+      ],
+      "latest_commit_timestamp": "2026-09-06T12:08:42+05:30",
+      "latest_commit_subject": "fix: say \"retired\", not \"experimental\", for a collector the operator withdrew",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/agent/feature-phone-completion-phase-a",
+        "origin/agent/feature-phone-completion-stage-a",
+        "origin/agent/fix-macos-bundle-identifier",
+        "origin/expansion/itel-lava",
+        "origin/main",
+        "origin/phase0/containment"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-09-06T12:08:42+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Clanks/feature-phone-clank\nHEAD 66e721f76f65a197a13597d55cef146149d8d0aa\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/feature-phone-clank.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Feature Phone Clank",
+        "project config: pyproject.toml",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Feature Phone Clank",
+      "apparent_status": "UNVERIFIED_PRODUCTION",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "free-game-tracker",
+      "slug": "free-game-tracker",
+      "display_name": "Newsroom",
+      "aliases": [
+        "newsroom",
+        "fgt"
+      ],
+      "local_path": "C:\\Users\\anil\\Clanks\\free-game-tracker",
+      "discovery_group": "clanks_root",
+      "readme_heading": "Newsroom",
+      "readme_excerpt": [
+        "# Newsroom",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** Repository state is",
+        "> not proof of the deployed SHA, scheduler, database, notification authority,",
+        "> backup, or rollback target; those facts remain `UNKNOWN` in the fleet ledger.",
+        "",
+        "> Status: Code-level release candidate; deployed production state is unverified",
+        "",
+        "An internal newsroom sensor. Version 0.1 does exactly one thing: **detect newly",
+        "free PC games** on the Epic Games Store, Steam (100%-off only), and GOG.",
+        "",
+        "It collects facts and evidence. It does not write articles, summaries, or"
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/free-game-tracker.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/free-game-tracker.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/free-game-tracker.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "011b89fc6747ce2bd93e75aba327fd1cffbf3b69",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-09-04T19:14:42+05:30",
+      "latest_commit_subject": "tests: lock down the operator console and make the webapp suite hermetic",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "feat/reddit-discovery-admission",
+        "main",
+        "origin",
+        "origin/main",
+        "origin/phase0/containment"
+      ],
+      "local_branches": [
+        {
+          "name": "feat/reddit-discovery-admission",
+          "committerdate": "2026-09-04T19:14:42+05:30",
+          "upstream": "origin/main"
+        },
+        {
+          "name": "main",
+          "committerdate": "2026-09-04T19:14:42+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Clanks/free-game-tracker\nHEAD 011b89fc6747ce2bd93e75aba327fd1cffbf3b69\nbranch refs/heads/main\n\nworktree C:/Users/anil/Clanks/_RedditAdmission/free-game-tracker\nHEAD 011b89fc6747ce2bd93e75aba327fd1cffbf3b69\nbranch refs/heads/feat/reddit-discovery-admission",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/free-game-tracker.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Newsroom",
+        "project config: pyproject.toml",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Newsroom",
+      "apparent_status": "UNVERIFIED_PRODUCTION",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml",
+        "docker-compose.yml",
+        "deploy",
+        "HANDOFF.md"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "korean-tech-wire",
+      "slug": "korean-tech-wire",
+      "display_name": "Korean Tech Wire",
+      "aliases": [
+        "ktw",
+        "korean tech wire"
+      ],
+      "local_path": "C:\\Users\\anil\\Clanks\\korean-tech-wire",
+      "discovery_group": "clanks_root",
+      "readme_heading": "Korean Tech Wire",
+      "readme_excerpt": [
+        "# Korean Tech Wire",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** Repository state is",
+        "> not proof of the deployed SHA, scheduler, database, notification authority,",
+        "> backup, or rollback target; those facts remain `UNKNOWN` in the fleet ledger.",
+        "",
+        "An independent, Korean-language technology intelligence collector. It is intentionally a separate package, database, configuration, and runtime from every other Wire project.",
+        "",
+        "## Current status",
+        "",
+        "Stage 4 closed 2026-08-19. **PRODUCTION**: SK hynix Korea, The Elec, ETNews Hardware Sections. **EXPERIMENTAL**: Samsung Newsroom Korea, LG Display, ZDNet Korea (semiconductor/display vertical), Digital Today (semiconductor/display vertical). There are no alert integrations.",
+        ""
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/korean-tech-wire.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/korean-tech-wire.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/korean-tech-wire.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "cde104b91719da5c150aed91650623b526b2479a",
+      "dirty": true,
+      "dirty_count": 14,
+      "dirty_sample": [
+        " M src/korean_tech_wire/cli.py",
+        " M src/korean_tech_wire/discovery/runner.py",
+        " M src/korean_tech_wire/language/enrich.py",
+        " M src/korean_tech_wire/language/translator.py",
+        " M src/korean_tech_wire/storage/database.py",
+        " M tests/test_dashboard_language_qc.py",
+        " M tests/test_translation.py",
+        "?? build/",
+        "?? dist/",
+        "?? src/korean_tech_wire/language/usage.py",
+        "?? tests/conftest.py",
+        "?? tests/test_translation_cost.py",
+        "?? var/korean_tech_wire.db.pre-v6-migration-20260909T165219Z",
+        "?? var/qc_archive.db.pre-m37"
+      ],
+      "latest_commit_timestamp": "2026-09-09T23:50:56+05:30",
+      "latest_commit_subject": "feat: Discord notifications on the shared fleet operator contract",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/agent/fix-macos-bundle-identifier",
+        "origin/agent/ktw-interactive-field-test",
+        "origin/main",
+        "origin/phase0/containment",
+        "origin/stage4.1-reliability-repair"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-09-09T23:50:56+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Clanks/korean-tech-wire\nHEAD cde104b91719da5c150aed91650623b526b2479a\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/korean-tech-wire.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Korean Tech Wire",
+        "project config: pyproject.toml",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Korean Tech Wire",
+      "apparent_status": "UNVERIFIED_PRODUCTION",
+      "deployment_hints": [
+        "deploy"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "oem-radar",
+      "slug": "oem-radar",
+      "display_name": "OEM Radar",
+      "aliases": [
+        "oemradar"
+      ],
+      "local_path": "C:\\Users\\anil\\Clanks\\oem-radar",
+      "discovery_group": "clanks_root",
+      "readme_heading": "OEM Radar",
+      "readme_excerpt": [
+        "# OEM Radar",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** Repository state is",
+        "> not proof of the deployed SHA, scheduler, database, notification authority,",
+        "> backup, or rollback target; those facts remain `UNKNOWN` in the fleet ledger.",
+        "",
+        "> Status: Active development — feature incomplete",
+        "",
+        "The dashboard is loopback-only and read-only during Phase 0. It has no",
+        "authenticated remote or mutation profile; CSRF tokens are not authentication.",
+        "Use approved CLI workflows for crawl and review changes.",
+        ""
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/oem-radar.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/oem-radar.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/oem-radar.git",
+      "default_branch": "main",
+      "current_branch": "expansion-handheld-sixunited-m1",
+      "head": "adb04cc0b3cfd4266e46bb41af0c22044584272d",
+      "dirty": true,
+      "dirty_count": 1,
+      "dirty_sample": [
+        "?? scripts/run-collection.cmd"
+      ],
+      "latest_commit_timestamp": "2026-09-09T19:23:22+05:30",
+      "latest_commit_subject": "feat: add Chinese handheld OEM source coverage",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "expansion-handheld-sixunited-m1",
+        "experimental/japan-mini-pc-hetzner-soak",
+        "feat/reddit-discovery-admission",
+        "feature/oem-radar-2",
+        "main",
+        "origin",
+        "origin/codex/bankai-config-availability",
+        "origin/expansion-handheld-sixunited-m1",
+        "origin/experimental/japan-mini-pc-hetzner-soak",
+        "origin/feature/oem-radar-2",
+        "origin/fix/pipeline-rescore-new-product-severity-12251422320145568209",
+        "origin/main",
+        "origin/phase0/containment"
+      ],
+      "local_branches": [
+        {
+          "name": "expansion-handheld-sixunited-m1",
+          "committerdate": "2026-09-09T19:23:22+05:30",
+          "upstream": "origin/expansion-handheld-sixunited-m1"
+        },
+        {
+          "name": "experimental/japan-mini-pc-hetzner-soak",
+          "committerdate": "2026-08-31T02:07:42+05:30",
+          "upstream": "origin/experimental/japan-mini-pc-hetzner-soak"
+        },
+        {
+          "name": "feat/reddit-discovery-admission",
+          "committerdate": "2026-09-08T04:31:00+05:30",
+          "upstream": "origin/main"
+        },
+        {
+          "name": "feature/oem-radar-2",
+          "committerdate": "2026-08-27T16:38:47+05:30",
+          "upstream": "origin/feature/oem-radar-2"
+        },
+        {
+          "name": "main",
+          "committerdate": "2026-09-06T23:36:46+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Clanks/oem-radar\nHEAD adb04cc0b3cfd4266e46bb41af0c22044584272d\nbranch refs/heads/expansion-handheld-sixunited-m1\n\nworktree C:/Users/anil/Clanks/_RedditAdmission/oem-radar\nHEAD 9323b9449791230d9766967cd5d9eaed120cca26\nbranch refs/heads/feat/reddit-discovery-admission",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## expansion-handheld-sixunited-m1...origin/expansion-handheld-sixunited-m1",
+      "remote": "https://github.com/anil-ganti-nbc/oem-radar.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: OEM Radar",
+        "project config: pyproject.toml",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "OEM Radar",
+      "apparent_status": "UNVERIFIED_PRODUCTION",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.yml",
+        "deploy"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "semiconductor-intelligence",
+      "slug": "semiconductor-intelligence",
+      "display_name": "Semiconductor Intelligence Platform 3.1 — Legacy import checkpoint",
+      "aliases": [
+        "si",
+        "semi-int",
+        "semiconductor intelligence"
+      ],
+      "local_path": "C:\\Users\\anil\\Clanks\\semiconductor-intelligence",
+      "discovery_group": "clanks_root",
+      "readme_heading": "Semiconductor Intelligence Platform 3.1 — Legacy import checkpoint",
+      "readme_excerpt": [
+        "# Semiconductor Intelligence Platform 3.1 — Legacy import checkpoint",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** This source tree is",
+        "> not proof of the deployed artifact. See [`PHASE0_CONTAINMENT.md`](PHASE0_CONTAINMENT.md).",
+        "",
+        "> Status: Staging / additional soak testing required",
+        "",
+        "A claims-and-evidence intelligence platform for semiconductor/hardware",
+        "journalism: think \"Bloomberg Terminal meets Palantir\" scoped to GPUs, CPUs,",
+        "foundry nodes, and supply chains. The atomic unit is the **claim**, not the",
+        "article. The AI never owns the truth; the database does. Every milestone",
+        "below shipped as its own working, tested increment."
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/semiconductor-intelligence.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/semiconductor-intelligence.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/semiconductor-intelligence.git",
+      "default_branch": "main",
+      "current_branch": "reddit-pilot-m0-hardware",
+      "head": "5f843d8abce24a64315620296a5ca47044906cd7",
+      "dirty": true,
+      "dirty_count": 2,
+      "dirty_sample": [
+        "?? AGENTS.md",
+        "?? scripts/run-collection.cmd"
+      ],
+      "latest_commit_timestamp": "2026-09-09T09:38:41+05:30",
+      "latest_commit_subject": "fix: isolate transition watermarks per authority and fail closed on cold admission",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "reddit-pilot-m0-hardware",
+        "origin",
+        "origin/fix/scheduler-heartbeat-repair",
+        "origin/main",
+        "origin/phase0/containment",
+        "origin/phase0/windows-unavailable-skip",
+        "origin/reddit-pilot-m0-hardware"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-09-06T13:16:08+05:30",
+          "upstream": "origin/main"
+        },
+        {
+          "name": "reddit-pilot-m0-hardware",
+          "committerdate": "2026-09-09T09:38:41+05:30",
+          "upstream": "origin/reddit-pilot-m0-hardware"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Clanks/semiconductor-intelligence\nHEAD 5f843d8abce24a64315620296a5ca47044906cd7\nbranch refs/heads/reddit-pilot-m0-hardware",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## reddit-pilot-m0-hardware...origin/reddit-pilot-m0-hardware",
+      "remote": "https://github.com/anil-ganti-nbc/semiconductor-intelligence.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Semiconductor Intelligence Platform 3.1 — Legacy import checkpoint",
+        "project config: pyproject.toml",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Semiconductor Intelligence Platform 3.1 — Legacy import checkpoint",
+      "apparent_status": "UNVERIFIED_PRODUCTION",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml",
+        "deploy",
+        "PHASE0_CONTAINMENT.md",
+        "HANDOFF.md"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "smartphone-clank",
+      "slug": "smartphone-clank",
+      "display_name": "Smartphone Intel Clank v0.2 — Evidence Engine",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Clanks\\smartphone-clank",
+      "discovery_group": "clanks_root",
+      "readme_heading": "Smartphone Intel Clank v0.2 — Evidence Engine",
+      "readme_excerpt": [
+        "# Smartphone Intel Clank v0.2 — Evidence Engine",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** Repository state is",
+        "> not proof of the deployed SHA, scheduler, database, notification authority,",
+        "> backup, or rollback target; those facts remain `UNKNOWN` in the fleet ledger.",
+        "",
+        "> Status: Experimental / under construction",
+        "",
+        "**From model numbers to intelligence.**",
+        "",
+        "v0.1 built the sensors.  ",
+        "v0.2 builds the interpretation layer."
+      ],
+      "config_files": [
+        "requirements.txt"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/smartphone-clank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/smartphone-clank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/smartphone-clank.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "60bc5f595c79b093abfd084577b9658b197b497e",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-09-06T03:53:52+05:30",
+      "latest_commit_subject": "chore: promote canary source to production maturity",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/agent/fix-smartphone-scheduler-google",
+        "origin/feature/wave1-expansion",
+        "origin/main",
+        "origin/phase0/containment"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-09-06T03:53:52+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Clanks/smartphone-clank\nHEAD 60bc5f595c79b093abfd084577b9658b197b497e\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/smartphone-clank.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Smartphone Intel Clank v0.2 — Evidence Engine",
+        "project config: requirements.txt",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Smartphone Intel Clank v0.2 — Evidence Engine",
+      "apparent_status": "UNVERIFIED_PRODUCTION",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml",
+        "deploy",
+        "HANDOFF.md"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "smartwatch-clank",
+      "slug": "smartwatch-clank",
+      "display_name": "Smartwatch Clank",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Clanks\\smartwatch-clank",
+      "discovery_group": "clanks_root",
+      "readme_heading": "Smartwatch Clank",
+      "readme_excerpt": [
+        "# Smartwatch Clank",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** The unauthenticated",
+        "> dashboard is loopback-only and its collection mutation is disabled until an",
+        "> authenticated profile exists.",
+        "",
+        "> Status: Experimental / under construction",
+        "",
+        "Smartwatch Clank is an independently runnable intelligence collector for connected wrist-worn computing devices. It stores durable source observations, computes deterministic changes, and protects editorial alerts from broken collectors.",
+        "",
+        "Stage 2.2 enables controlled production observation for the Samsung product catalogue and independently isolated India/UK/Germany support collectors. Discord notifications remain disabled; the database and CLI are the soak observation surface.",
+        ""
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/smartwatch-clank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/smartwatch-clank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/smartwatch-clank.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "80856f8888d94d82e91488144db224edaa4179b5",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-09-06T04:12:16+05:30",
+      "latest_commit_subject": "chore: promote experimental collectors to production",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "feature/garmin-egress-relay",
+        "fix/deploy-backup-readonly-mount",
+        "fix/garmin-relay-bridge-gateway-port",
+        "fix/run-lock-container-hostname-pid-namespace",
+        "main",
+        "origin",
+        "origin/agent/fix-macos-bundle-identifier",
+        "origin/agent/smartwatch-completion-stage-a",
+        "origin/docs/hetzner-deployment-2026-08-18",
+        "origin/expansion/stage-a-shared-infrastructure",
+        "origin/expansion/stage-b-official-news",
+        "origin/expansion/stage-c-garmin-amazfit-coros",
+        "origin/feature/garmin-egress-relay",
+        "origin/fix/deploy-backup-readonly-mount",
+        "origin/fix/experimental-soak-run-script",
+        "origin/fix/explicit-run-scope-semantics",
+        "origin/fix/garmin-relay-bridge-gateway-port",
+        "origin/fix/soak-timer-fixed-clock-schedule",
+        "origin/main",
+        "origin/phase0/containment"
+      ],
+      "local_branches": [
+        {
+          "name": "feature/garmin-egress-relay",
+          "committerdate": "2026-08-29T09:39:45+05:30",
+          "upstream": "origin/feature/garmin-egress-relay"
+        },
+        {
+          "name": "fix/deploy-backup-readonly-mount",
+          "committerdate": "2026-08-29T19:56:37+05:30",
+          "upstream": "origin/fix/deploy-backup-readonly-mount"
+        },
+        {
+          "name": "fix/garmin-relay-bridge-gateway-port",
+          "committerdate": "2026-08-29T17:46:29+05:30",
+          "upstream": "origin/fix/garmin-relay-bridge-gateway-port"
+        },
+        {
+          "name": "fix/run-lock-container-hostname-pid-namespace",
+          "committerdate": "2026-08-27T22:42:43+05:30",
+          "upstream": "origin/fix/run-lock-container-hostname-pid-namespace"
+        },
+        {
+          "name": "main",
+          "committerdate": "2026-09-06T04:12:16+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Clanks/smartwatch-clank\nHEAD 80856f8888d94d82e91488144db224edaa4179b5\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/smartwatch-clank.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Smartwatch Clank",
+        "project config: pyproject.toml",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Smartwatch Clank",
+      "apparent_status": "UNVERIFIED_PRODUCTION",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml",
+        "deploy"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "standards-clank",
+      "slug": "standards-clank",
+      "display_name": "Standards Clank",
+      "aliases": [
+        "standards"
+      ],
+      "local_path": "C:\\Users\\anil\\Clanks\\standards-clank",
+      "discovery_group": "clanks_root",
+      "readme_heading": "Standards Clank",
+      "readme_excerpt": [
+        "# Standards Clank",
+        "",
+        "## What is it?",
+        "",
+        "Standards Clank is the normative, machine-readable standards layer for the",
+        "Clank fleet. It will eventually define versioned MUST/SHOULD/MAY",
+        "requirements for how Clanks are built and operated — with rationale,",
+        "evidence, exceptions, and audit trails attached to every rule.",
+        "",
+        "## Why does it exist?",
+        "",
+        "Individual Clanks (watch-clank, oem-radar, semiconductor-intelligence,"
+      ],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/standards-clank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/standards-clank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/standards-clank.git",
+      "default_branch": "master",
+      "current_branch": "master",
+      "head": "7c821ea974d8a58e7b049b1bee538a64cca43dc2",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-09-05T22:11:21+05:30",
+      "latest_commit_subject": "audit: M58 independent whole-project closure audit",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "master",
+        "origin",
+        "origin/master"
+      ],
+      "local_branches": [
+        {
+          "name": "master",
+          "committerdate": "2026-09-05T22:11:21+05:30",
+          "upstream": "origin/master"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Clanks/standards-clank\nHEAD 7c821ea974d8a58e7b049b1bee538a64cca43dc2\nbranch refs/heads/master",
+      "origin_head_ref": "refs/remotes/origin/master",
+      "status_branch_line": "## master...origin/master",
+      "remote": "https://github.com/anil-ganti-nbc/standards-clank.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Standards Clank",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Standards Clank",
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "tablet-clank",
+      "slug": "tablet-clank",
+      "display_name": "Tablet Clank",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Clanks\\tablet-clank",
+      "discovery_group": "clanks_root",
+      "readme_heading": "Tablet Clank",
+      "readme_excerpt": [
+        "# Tablet Clank",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** Repository state is",
+        "> not proof of the deployed SHA, scheduler, database, notification authority,",
+        "> backup, or rollback target; those facts remain `UNKNOWN` in the fleet ledger.",
+        "",
+        "Tablet Clank is an independent, evidence-first product-intelligence system for discovering meaningful tablet catalogue changes from first-party manufacturer sources.",
+        "",
+        "Stage 1 is intentionally small: Apple's historical India sitemap remains a",
+        "disabled/untrusted source, Apple US/India iPad Pro Store configuration pages",
+        "and Samsung US XML sitemap are experimental collectors, and Honor (CN",
+        "catalogue + comparison) and TCL (global catalogue) are experimental sources"
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/tablet-clank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/tablet-clank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/tablet-clank.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "7fd69392a89f320a98fee8c046419acb466f98f3",
+      "dirty": true,
+      "dirty_count": 2,
+      "dirty_sample": [
+        "?? build/",
+        "?? dist/"
+      ],
+      "latest_commit_timestamp": "2026-09-06T11:55:52+05:30",
+      "latest_commit_subject": "fix: stamp manual qualification provenance on GUI-triggered collection",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/main",
+        "origin/native-macos-field-test-launcher",
+        "origin/phase0/containment"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-09-06T11:55:52+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Clanks/tablet-clank\nHEAD 7fd69392a89f320a98fee8c046419acb466f98f3\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/tablet-clank.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Tablet Clank",
+        "project config: pyproject.toml",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Tablet Clank",
+      "apparent_status": "UNVERIFIED_PRODUCTION",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml",
+        "deploy",
+        "HANDOFF.md"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "watch-clank",
+      "slug": "watch-clank",
+      "display_name": "Watch Clank",
+      "aliases": [
+        "horology-clank",
+        "watch clank"
+      ],
+      "local_path": "C:\\Users\\anil\\Clanks\\watch-clank",
+      "discovery_group": "clanks_root",
+      "readme_heading": "Watch Clank",
+      "readme_excerpt": [
+        "# Watch Clank",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** The unauthenticated",
+        "> dashboard supports loopback binding only; LAN, NAS, Tailscale, and public",
+        "> exposure are unsupported until an authenticated profile exists.",
+        "",
+        "> Status: Experimental / under construction",
+        "",
+        "Editorial intelligence system for discovering new analog-watch releases.",
+        "",
+        "**Stage 1** focuses exclusively on the official Casio Japan source and proves the ingestion foundation.",
+        ""
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": true,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/watch-clank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/watch-clank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/watch-clank.git",
+      "default_branch": "main",
+      "current_branch": "fix/specialist-lead-terminal-state",
+      "head": "9b7b511b870abdfa56805862bdcd29d01de5d74d",
+      "dirty": true,
+      "dirty_count": 1,
+      "dirty_sample": [
+        "?? data/"
+      ],
+      "latest_commit_timestamp": "2026-09-09T22:20:47+05:30",
+      "latest_commit_subject": "docs: label 13:28 soak reviews preliminary; set process and GGW window ends",
+      "latest_commit_author": "anil-ganti-nbc",
+      "branches": [
+        "codex/goldsmiths-uk-experimental",
+        "feature/horology-sentinel",
+        "fix/specialist-lead-terminal-state",
+        "main",
+        "origin",
+        "origin/agent/watch-interactive-field-test",
+        "origin/agent/watch-macos-launcher",
+        "origin/audit/hostile-watch-clank-2026-08-21",
+        "origin/audit/watch-clank-remediation-2026-08-21",
+        "origin/codex/goldsmiths-uk-experimental",
+        "origin/codex/watch-sqlite-busy-timeout",
+        "origin/feature/horology-sentinel",
+        "origin/fix/specialist-lead-terminal-state",
+        "origin/main",
+        "origin/phase0/containment",
+        "origin/remediate-std-ui-com-007-run-now-maturity-14031874062018976457"
+      ],
+      "local_branches": [
+        {
+          "name": "codex/goldsmiths-uk-experimental",
+          "committerdate": "2026-08-30T00:29:22+05:30",
+          "upstream": "origin/codex/goldsmiths-uk-experimental"
+        },
+        {
+          "name": "feature/horology-sentinel",
+          "committerdate": "2026-09-09T05:03:06+05:30",
+          "upstream": "origin/feature/horology-sentinel"
+        },
+        {
+          "name": "fix/specialist-lead-terminal-state",
+          "committerdate": "2026-09-09T22:20:47+05:30",
+          "upstream": "origin/fix/specialist-lead-terminal-state"
+        },
+        {
+          "name": "main",
+          "committerdate": "2026-09-06T04:22:14+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Clanks/watch-clank\nHEAD 9b7b511b870abdfa56805862bdcd29d01de5d74d\nbranch refs/heads/fix/specialist-lead-terminal-state",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## fix/specialist-lead-terminal-state...origin/fix/specialist-lead-terminal-state",
+      "remote": "https://github.com/anil-ganti-nbc/watch-clank.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Watch Clank",
+        "project config: pyproject.toml",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Watch Clank",
+      "apparent_status": "UNVERIFIED_PRODUCTION",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml",
+        "HANDOFF.md"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "fleet-db-backups",
+      "slug": "fleet-db-backups",
+      "display_name": "_fleet_db_backups",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Clanks\\_fleet_db_backups",
+      "discovery_group": "clanks_root",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "underscore-prefixed directory under Clanks root"
+      ],
+      "confidence": "high",
+      "apparent_purpose": null,
+      "apparent_status": "support",
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "launchers",
+      "slug": "launchers",
+      "display_name": "_Launchers",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Clanks\\_Launchers",
+      "discovery_group": "clanks_root",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "underscore-prefixed directory under Clanks root"
+      ],
+      "confidence": "high",
+      "apparent_purpose": null,
+      "apparent_status": "support",
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "reconciliation",
+      "slug": "reconciliation",
+      "display_name": "_Reconciliation",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Clanks\\_Reconciliation",
+      "discovery_group": "clanks_root",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "underscore-prefixed directory under Clanks root"
+      ],
+      "confidence": "high",
+      "apparent_purpose": null,
+      "apparent_status": "support",
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "redditadmission",
+      "slug": "redditadmission",
+      "display_name": "_RedditAdmission",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Clanks\\_RedditAdmission",
+      "discovery_group": "clanks_root",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "underscore-prefixed directory under Clanks root"
+      ],
+      "confidence": "high",
+      "apparent_purpose": null,
+      "apparent_status": "support",
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "desktop",
+      "slug": "desktop",
+      "display_name": "Desktop",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Desktop",
+      "discovery_group": "desktop",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "UNKNOWN",
+      "evidence": [
+        "no git, README, or project config"
+      ],
+      "confidence": "low",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "chudbox-local",
+      "slug": "chudbox-local",
+      "display_name": "chudbox-local",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Desktop\\chudbox-local",
+      "discovery_group": "desktop",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "UNKNOWN",
+      "evidence": [
+        "desktop artefact without project metadata"
+      ],
+      "confidence": "low",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "clankopsdashboard",
+      "slug": "clankopsdashboard",
+      "display_name": "ClankOpsDashboard",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Desktop\\ClankOpsDashboard",
+      "discovery_group": "desktop",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "UNKNOWN",
+      "evidence": [
+        "empty desktop placeholder directory"
+      ],
+      "confidence": "medium",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "cvc-clank",
+      "slug": "cvc-clank",
+      "display_name": "CVC Clank",
+      "aliases": [
+        "cvc"
+      ],
+      "local_path": "C:\\Users\\anil\\Desktop\\CVC Clank",
+      "discovery_group": "desktop",
+      "readme_heading": "CVC Clank",
+      "readme_excerpt": [
+        "# CVC Clank",
+        "",
+        "CVC is the Clank ecosystem's evidence-backed institutional memory. It records",
+        "and evaluates lessons from incidents, successful architectural patterns,",
+        "migrations/restores, diagnostic findings, cross-Clank audits, evidence",
+        "triggers, and rule support/ratification history.",
+        "",
+        "The canonical repository is <https://github.com/anil-ganti-nbc/cvc-clank>.",
+        "",
+        "## Scope and identity",
+        "",
+        "CVC is operational, operator-triggered, and unscheduled:"
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": "fatal: detected dubious ownership in repository at 'C:/Users/anil/Desktop/CVC Clank'\n'C:/Users/anil/Desktop/CVC Clank/.git' is owned by:\n\tDESKTOP-GA8J1H5/CodexSandboxOffline (S-1-5-21-2386277767-2755656309-2187558814-1005)\nbut the current user is:\n\tDESKTOP-GA8J1H5/anil (S-1-5-21-2386277767-2755656309-2187558814-1000)\nTo add an exception for this directory, call:\n\n\tgit config --global --add safe.directory 'C:/Users/anil/Desktop/CVC Clank'",
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "NEEDS_RECONSTRUCTION",
+      "evidence": [
+        "git inspect blocked by dubious ownership",
+        "README identifies CVC Clank"
+      ],
+      "confidence": "medium",
+      "apparent_purpose": "CVC Clank",
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "cvc-workbench",
+      "slug": "cvc-workbench",
+      "display_name": "CVC Workbench",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Desktop\\CVC Workbench",
+      "discovery_group": "desktop",
+      "readme_heading": "CVC Workbench",
+      "readme_excerpt": [
+        "# CVC Workbench",
+        "",
+        "CVC Workbench is a local, operator-triggered research tool for a story that a journalist has already chosen. It investigates one URL, product/model, or rough claim and returns a compact evidence-backed dossier covering context, verification, novelty, Notebookcheck coverage, timeline, comparison, regional status, conflicts, and sources.",
+        "",
+        "It is separate from the institutional CVC project. The Workbench does not choose stories, rank editorial interest, publish articles, write copy, send alerts, run continuously, or start a scheduler/daemon.",
+        "",
+        "## What goes in",
+        "",
+        "One text box accepts a URL, product page, leak, benchmark, press release, social post, model/SKU, or rough claim. The dropdown is only a routing hint; all input types use the same text box.",
+        "",
+        "## What comes out",
+        ""
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "PROBABLE",
+      "evidence": [
+        "local project with README and pyproject, no git",
+        "README heading: CVC Workbench"
+      ],
+      "confidence": "medium",
+      "apparent_purpose": "CVC Workbench",
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "diagnostic-clank-honor-miss-evidence",
+      "slug": "diagnostic-clank-honor-miss-evidence",
+      "display_name": "diagnostic-clank-honor-miss-evidence",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Desktop\\diagnostic-clank-honor-miss-evidence",
+      "discovery_group": "desktop",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "UNKNOWN",
+      "evidence": [
+        "desktop artefact without project metadata"
+      ],
+      "confidence": "low",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "editorial-assist-clank",
+      "slug": "editorial-assist-clank",
+      "display_name": "Story Intelligence Clank",
+      "aliases": [
+        "story-intelligence-clank",
+        "story-clank"
+      ],
+      "local_path": "C:\\Users\\anil\\Desktop\\Editorial Assist Clank",
+      "discovery_group": "desktop",
+      "readme_heading": "Story Intelligence Clank",
+      "readme_excerpt": [
+        "# Story Intelligence Clank",
+        "",
+        "Request-driven research for a story the operator has already selected.",
+        "",
+        "The M0 implementation accepts a URL, a query, or a tolerant JSON handoff and",
+        "returns a structured JSON `StoryInvestigation` plus a Markdown dossier. It does",
+        "not select stories, score editorial interest, schedule work, notify anyone, or",
+        "run as a daemon.",
+        "",
+        "## Quick start",
+        "",
+        "```powershell"
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "PROBABLE",
+      "evidence": [
+        "local project with README and pyproject, no git",
+        "README heading: Story Intelligence Clank"
+      ],
+      "confidence": "medium",
+      "apparent_purpose": "Story Intelligence Clank",
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "grand-dau-unification",
+      "slug": "grand-dau-unification",
+      "display_name": "Grand DAU Unification",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Desktop\\Grand DAU Unification",
+      "discovery_group": "desktop",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "UNKNOWN",
+      "evidence": [
+        "desktop artefact without project metadata"
+      ],
+      "confidence": "low",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "project-anilwriter",
+      "slug": "project-anilwriter",
+      "display_name": "Project Anilwriter",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Desktop\\Project Anilwriter",
+      "discovery_group": "desktop",
+      "readme_heading": null,
+      "readme_excerpt": [
+        "AnilWriter",
+        "==========",
+        "",
+        "AnilWriter is a provenance-first corpus and drafting benchmark for",
+        "technology-news writing. The supplied project includes the corpus database,",
+        "AnilBench B0/B1/B2 evaluation harness, and a small Windows desktop drafting",
+        "shell.",
+        "",
+        "Windows quick start",
+        "-------------------",
+        "",
+        "1. Install Python 3.11+."
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": true,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "PROBABLE",
+      "evidence": [
+        "AnilWriter-related tooling directory"
+      ],
+      "confidence": "low",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "quartermaster-clank",
+      "slug": "quartermaster-clank",
+      "display_name": "Quartermaster Clank",
+      "aliases": [
+        "quartermaster"
+      ],
+      "local_path": "C:\\Users\\anil\\Desktop\\Quartermaster Clank",
+      "discovery_group": "desktop",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "PROBABLE",
+      "evidence": [
+        "desktop Quartermaster wrapper (launcher + token-stats)"
+      ],
+      "confidence": "medium",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "self-audit-curriculum",
+      "slug": "self-audit-curriculum",
+      "display_name": "Self-Audit Curriculum — Operations",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Desktop\\self-audit-curriculum",
+      "discovery_group": "desktop",
+      "readme_heading": "Self-Audit Curriculum — Operations",
+      "readme_excerpt": [
+        "# Self-Audit Curriculum — Operations",
+        "",
+        "Human training system: teaching Anil to audit AI-agent-written software across",
+        "the `anil-ganti-nbc` fleet. Constitution in `PROJECT_BRIEF.md`; structure in",
+        "`SYLLABUS.md`. This file is only how to run it.",
+        "",
+        "## Session flow (the ritual)",
+        "",
+        "```bash",
+        "cd ~/self-audit-curriculum",
+        "",
+        "python engine.py list                                # see gates & state"
+      ],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": "master",
+      "current_branch": "master",
+      "head": "13126251a4f4ac234639521f6d3945baec27f4db",
+      "dirty": true,
+      "dirty_count": 2,
+      "dirty_sample": [
+        " M state/session.json",
+        "?? dist/state/"
+      ],
+      "latest_commit_timestamp": "2026-08-24T14:48:16+05:30",
+      "latest_commit_subject": "Frozen-exe support: RESOURCE_ROOT/ROOT split (PyInstaller _MEIPASS for read-only content/ui, state beside exe); build_exe.bat; exe smoke-tested cold (200, course JSON, incident strand present, session persistence)",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "master"
+      ],
+      "local_branches": [
+        {
+          "name": "master",
+          "committerdate": "2026-08-24T14:48:16+05:30",
+          "upstream": null
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Desktop/self-audit-curriculum\nHEAD 13126251a4f4ac234639521f6d3945baec27f4db\nbranch refs/heads/master",
+      "origin_head_ref": null,
+      "status_branch_line": "## master",
+      "remote": null,
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "README describes human training, not a Clank"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Self-Audit Curriculum — Operations",
+      "apparent_status": null,
+      "deployment_hints": [
+        "docker-compose.yml"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "watch-clank",
+      "slug": "watch-clank",
+      "display_name": "Watch clank",
+      "aliases": [
+        "horology-clank",
+        "watch clank"
+      ],
+      "local_path": "C:\\Users\\anil\\Desktop\\Watch clank",
+      "discovery_group": "desktop",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "desktop wrapper containing nested watch-clank checkout"
+      ],
+      "confidence": "medium",
+      "apparent_purpose": null,
+      "apparent_status": "support",
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "default-project",
+      "slug": "default-project",
+      "display_name": "Default Project",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Documents\\Default Project",
+      "discovery_group": "documents_nested",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "UNKNOWN",
+      "evidence": [
+        "no git, README, or project config"
+      ],
+      "confidence": "low",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "clank-architecture",
+      "slug": "clank-architecture",
+      "display_name": "Clank Architecture",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Documents\\Default Project\\clank-architecture",
+      "discovery_group": "documents_nested",
+      "readme_heading": "Clank Architecture",
+      "readme_excerpt": [
+        "# Clank Architecture",
+        "",
+        "## Canonical architecture",
+        "",
+        "[CANONICAL_CLANK_ARCHITECTURE_v0.2.md](CANONICAL_CLANK_ARCHITECTURE_v0.2.md)",
+        "is now the binding integration amendment to v0.1. ADR-0005 ratifies the",
+        "archaeology audits and makes observer-only adapters, instance/lane identity,",
+        "evidence-bearing capabilities, baseline handover, scheduler corroboration, and",
+        "golden incidents mandatory integration gates.",
+        "",
+        "[CANONICAL_CLANK_ARCHITECTURE_v0.1.md](CANONICAL_CLANK_ARCHITECTURE_v0.1.md)",
+        "is the primary normative architecture authority for future Clanks, adapters, and"
+      ],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/clank-architecture.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/clank-architecture.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/clank-architecture.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "66cef4c89a0f7cd4ddbea10a14149a63835ec4f5",
+      "dirty": true,
+      "dirty_count": 3,
+      "dirty_sample": [
+        "?? conformance/__pycache__/test_fleet_laws.cpython-311-pytest-9.1.1.pyc",
+        "?? conformance/__pycache__/test_fleet_laws.cpython-312-pytest-9.0.3.pyc",
+        "?? conformance/__pycache__/test_fleet_laws.cpython-314-pytest-9.1.1.pyc"
+      ],
+      "latest_commit_timestamp": "2026-08-25T04:24:41+05:30",
+      "latest_commit_subject": "CTW onboarding dogfood scorecard (v0.3 field test)",
+      "latest_commit_author": "ox-alpha",
+      "branches": [
+        "main",
+        "origin",
+        "origin/agent/publish-prompt-optimization",
+        "origin/audit/grand-clank-phase1-2026-08-22",
+        "origin/f6-adr0006-adr0007-continuity",
+        "origin/main",
+        "origin/phase0/containment",
+        "origin/phase0/governance-label-active"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-25T04:24:41+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Documents/Default Project/clank-architecture\nHEAD 66cef4c89a0f7cd4ddbea10a14149a63835ec4f5\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/clank-architecture.git",
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Clank Architecture",
+        "git inspect (read-only)",
+        "secondary local checkout; primary is C:\\Users\\anil\\Clanks\\clank-architecture"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Clank Architecture",
+      "apparent_status": "duplicate_checkout",
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "clank-transfer",
+      "slug": "clank-transfer",
+      "display_name": "clank-transfer",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Documents\\Default Project\\clank-transfer",
+      "discovery_group": "documents_nested",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "UNKNOWN",
+      "evidence": [
+        "no git, README, or project config"
+      ],
+      "confidence": "low",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "diagnostic-clank",
+      "slug": "diagnostic-clank",
+      "display_name": "Unified Clank Platform",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Documents\\Default Project\\diagnostic-clank",
+      "discovery_group": "documents_nested",
+      "readme_heading": "Unified Clank Platform",
+      "readme_excerpt": [
+        "# Unified Clank Platform",
+        "",
+        "> **Phase 0: PROTOTYPE CONTROL PLANE — promotion frozen.** The canonical",
+        "> 13-repository deployment ledger is `clank-fleet/inventories/fleet.yaml`;",
+        "> unresolved deployment facts remain explicit `UNKNOWN` values.",
+        "",
+        "> **Status:** Stage 1A — Fleet foundation + OEM Radar & Feature Phone read-only adapters  ",
+        "> **No production behaviour. No deployment. No merge to main without review.**",
+        "",
+        "Control plane, reference contracts, and survivability layer for the heterogeneous Clank army.",
+        "",
+        "```"
+      ],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/diagnostic-clank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/diagnostic-clank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/diagnostic-clank.git",
+      "default_branch": "diagnostic-clank-2026-08",
+      "current_branch": "diagnostic-clank-2026-08",
+      "head": "d54b35e670f0817af712aa4c6967feee360a5e43",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-26T09:01:32+05:30",
+      "latest_commit_subject": "P-4.4.1: SI evidence_envelopes() emitting intelligence_assertion@1",
+      "latest_commit_author": "ox-alpha",
+      "branches": [
+        "diagnostic-clank-2026-08",
+        "origin",
+        "origin/adr-0003-inbox-contract-v2",
+        "origin/agent/backup-restore-v01",
+        "origin/agent/diagnosticbench-db011",
+        "origin/agent/nas-docker-deployment",
+        "origin/agent/v01-archivist-field-test",
+        "origin/diagnostic-clank-2026-08",
+        "origin/hot-swap-observer-depth",
+        "origin/p4-smartwatch-adapter",
+        "origin/phase0/containment",
+        "origin/phase0/github-closeout",
+        "origin/phase0/governance-label-active",
+        "origin/report-ingestion-api-v1-2026-08"
+      ],
+      "local_branches": [
+        {
+          "name": "diagnostic-clank-2026-08",
+          "committerdate": "2026-08-26T09:01:32+05:30",
+          "upstream": "origin/diagnostic-clank-2026-08"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Documents/Default Project/diagnostic-clank\nHEAD d54b35e670f0817af712aa4c6967feee360a5e43\nbranch refs/heads/diagnostic-clank-2026-08",
+      "origin_head_ref": "refs/remotes/origin/diagnostic-clank-2026-08",
+      "status_branch_line": "## diagnostic-clank-2026-08...origin/diagnostic-clank-2026-08",
+      "remote": "https://github.com/anil-ganti-nbc/diagnostic-clank.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Unified Clank Platform",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Unified Clank Platform",
+      "apparent_status": "UNVERIFIED_PRODUCTION",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.yml"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "feature-phone-clank",
+      "slug": "feature-phone-clank",
+      "display_name": "Feature Phone Clank",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Documents\\Default Project\\feature-phone-clank",
+      "discovery_group": "documents_nested",
+      "readme_heading": "Feature Phone Clank",
+      "readme_excerpt": [
+        "# Feature Phone Clank",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** The unauthenticated",
+        "> dashboard is loopback-only and its collection mutation is disabled until an",
+        "> authenticated profile exists.",
+        "",
+        "> Status: Experimental / under construction",
+        "",
+        "Change-detection intelligence for official feature-phone sources (FEATURE-01). Crawls",
+        "HMD's official site (feature-phones and smartphones catalogue listings plus",
+        "`sitemap-dtc.xml`), deterministically classifies each product URL, extracts structured",
+        "spec fields from the page's own embedded data, and persists an append-only observation"
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/feature-phone-clank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/feature-phone-clank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/feature-phone-clank.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "e9f889160762d1dc0134366b8267ccaccfcfad05",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-27T05:50:18+05:30",
+      "latest_commit_subject": "Wave 2: add four experimental first-party sources (live-probed 2026-08-27)",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/agent/feature-phone-completion-phase-a",
+        "origin/agent/feature-phone-completion-stage-a",
+        "origin/agent/fix-macos-bundle-identifier",
+        "origin/expansion/itel-lava",
+        "origin/main",
+        "origin/phase0/containment"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-27T05:50:18+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Documents/Default Project/feature-phone-clank\nHEAD e9f889160762d1dc0134366b8267ccaccfcfad05\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/feature-phone-clank.git",
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Feature Phone Clank",
+        "project config: pyproject.toml",
+        "git inspect (read-only)",
+        "secondary local checkout; primary is C:\\Users\\anil\\Clanks\\feature-phone-clank"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Feature Phone Clank",
+      "apparent_status": "duplicate_checkout",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "fleet-campaign",
+      "slug": "fleet-campaign",
+      "display_name": "fleet-campaign",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Documents\\Default Project\\fleet-campaign",
+      "discovery_group": "documents_nested",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "UNKNOWN",
+      "evidence": [
+        "no git, README, or project config"
+      ],
+      "confidence": "low",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "korean-tech-wire",
+      "slug": "korean-tech-wire",
+      "display_name": "Korean Tech Wire",
+      "aliases": [
+        "ktw",
+        "korean tech wire"
+      ],
+      "local_path": "C:\\Users\\anil\\Documents\\Default Project\\korean-tech-wire",
+      "discovery_group": "documents_nested",
+      "readme_heading": "Korean Tech Wire",
+      "readme_excerpt": [
+        "# Korean Tech Wire",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** Repository state is",
+        "> not proof of the deployed SHA, scheduler, database, notification authority,",
+        "> backup, or rollback target; those facts remain `UNKNOWN` in the fleet ledger.",
+        "",
+        "An independent, Korean-language technology intelligence collector. It is intentionally a separate package, database, configuration, and runtime from every other Wire project.",
+        "",
+        "## Current status",
+        "",
+        "Stage 4 closed 2026-08-19. **PRODUCTION**: SK hynix Korea, The Elec, ETNews Hardware Sections. **EXPERIMENTAL**: Samsung Newsroom Korea, LG Display, ZDNet Korea (semiconductor/display vertical), Digital Today (semiconductor/display vertical). There are no alert integrations.",
+        ""
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/korean-tech-wire.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/korean-tech-wire.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/korean-tech-wire.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "125c39c863af02b982e5e29310e32e4713e56846",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-25T07:52:17+05:30",
+      "latest_commit_subject": "README: record ZDNet Korea + Digital Today EXPERIMENTAL additions",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/agent/fix-macos-bundle-identifier",
+        "origin/agent/ktw-interactive-field-test",
+        "origin/main",
+        "origin/phase0/containment",
+        "origin/stage4.1-reliability-repair"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-25T07:52:17+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Documents/Default Project/korean-tech-wire\nHEAD 125c39c863af02b982e5e29310e32e4713e56846\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/korean-tech-wire.git",
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Korean Tech Wire",
+        "project config: pyproject.toml",
+        "git inspect (read-only)",
+        "secondary local checkout; primary is C:\\Users\\anil\\Clanks\\korean-tech-wire"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Korean Tech Wire",
+      "apparent_status": "duplicate_checkout",
+      "deployment_hints": [
+        "deploy"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "motherclank",
+      "slug": "motherclank",
+      "display_name": "Motherclank M0",
+      "aliases": [
+        "mother-clank"
+      ],
+      "local_path": "C:\\Users\\anil\\Documents\\Default Project\\motherclank",
+      "discovery_group": "documents_nested",
+      "readme_heading": "Motherclank M0",
+      "readme_excerpt": [
+        "# Motherclank M0",
+        "",
+        "Read-only fleet harvester per [ADR-0002](https://github.com/anil-ganti-nbc/clank-architecture/blob/main/adr/0002-motherclank-supervisory-architecture.md).",
+        "",
+        "```",
+        "motherclank harvest --inventory fleet.yaml --real-state DIR [--out DIR] [--dry-run] [--adapters-src PATH]",
+        "```",
+        "",
+        "- Consumes the Diagnostic-Clank-owned read-only adapters **unchanged** (located as",
+        "  workspace sibling `../diagnostic-clank`, or via `--adapters-src`).",
+        "- Onboarded order (Phase 2C): watch-clank → smartphone-clank → korean-tech-wire →",
+        "  feature-phone-clank."
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/motherclank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/motherclank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/motherclank.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "ba04f3dd6961c55d8b5f1057c11c1af76a8dacc5",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-27T01:15:45+05:30",
+      "latest_commit_subject": "P-FINAL: fleet closeout artifact + deterministic-synthesis fix",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/adr-0003-inbox-bridge",
+        "origin/f6-continuity-f2",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-27T01:15:45+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Documents/Default Project/motherclank\nHEAD ba04f3dd6961c55d8b5f1057c11c1af76a8dacc5\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/motherclank.git",
+      "classification": "VERIFIED",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Motherclank M0",
+        "project config: pyproject.toml",
+        "git inspect (read-only)"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Motherclank M0",
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "smartphone-clank",
+      "slug": "smartphone-clank",
+      "display_name": "Smartphone Intel Clank v0.2 — Evidence Engine",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Documents\\Default Project\\smartphone-clank",
+      "discovery_group": "documents_nested",
+      "readme_heading": "Smartphone Intel Clank v0.2 — Evidence Engine",
+      "readme_excerpt": [
+        "# Smartphone Intel Clank v0.2 — Evidence Engine",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** Repository state is",
+        "> not proof of the deployed SHA, scheduler, database, notification authority,",
+        "> backup, or rollback target; those facts remain `UNKNOWN` in the fleet ledger.",
+        "",
+        "> Status: Experimental / under construction",
+        "",
+        "**From model numbers to intelligence.**",
+        "",
+        "v0.1 built the sensors.  ",
+        "v0.2 builds the interpretation layer."
+      ],
+      "config_files": [
+        "requirements.txt"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/smartphone-clank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/smartphone-clank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/smartphone-clank.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "10906e6813781389ddb862368104b8cd5c61a5f2",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-25T15:22:04+05:30",
+      "latest_commit_subject": "Fix samsung_us_owners_product soak: MODEL_RE cap + staging runtime wiring",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/agent/fix-smartphone-scheduler-google",
+        "origin/feature/wave1-expansion",
+        "origin/main",
+        "origin/phase0/containment"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-25T15:22:04+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Documents/Default Project/smartphone-clank\nHEAD 10906e6813781389ddb862368104b8cd5c61a5f2\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/smartphone-clank.git",
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Smartphone Intel Clank v0.2 — Evidence Engine",
+        "project config: requirements.txt",
+        "git inspect (read-only)",
+        "secondary local checkout; primary is C:\\Users\\anil\\Clanks\\smartphone-clank"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Smartphone Intel Clank v0.2 — Evidence Engine",
+      "apparent_status": "duplicate_checkout",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml",
+        "deploy",
+        "HANDOFF.md"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "smartwatch-clank",
+      "slug": "smartwatch-clank",
+      "display_name": "Smartwatch Clank",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Documents\\Default Project\\smartwatch-clank",
+      "discovery_group": "documents_nested",
+      "readme_heading": "Smartwatch Clank",
+      "readme_excerpt": [
+        "# Smartwatch Clank",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** The unauthenticated",
+        "> dashboard is loopback-only and its collection mutation is disabled until an",
+        "> authenticated profile exists.",
+        "",
+        "> Status: Experimental / under construction",
+        "",
+        "Smartwatch Clank is an independently runnable intelligence collector for connected wrist-worn computing devices. It stores durable source observations, computes deterministic changes, and protects editorial alerts from broken collectors.",
+        "",
+        "Stage 2.2 enables controlled production observation for the Samsung product catalogue and independently isolated India/UK/Germany support collectors. Discord notifications remain disabled; the database and CLI are the soak observation surface.",
+        ""
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/smartwatch-clank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/smartwatch-clank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/smartwatch-clank.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "7ed4d74291deb54306c970bf3d5c8553ba558232",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-27T07:31:08+05:30",
+      "latest_commit_subject": "Wave 2: garmin_updates collector + DC Rainmaker specialist (recovery-first)",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/agent/fix-macos-bundle-identifier",
+        "origin/agent/smartwatch-completion-stage-a",
+        "origin/docs/hetzner-deployment-2026-08-18",
+        "origin/expansion/stage-a-shared-infrastructure",
+        "origin/expansion/stage-b-official-news",
+        "origin/expansion/stage-c-garmin-amazfit-coros",
+        "origin/fix/experimental-soak-run-script",
+        "origin/fix/explicit-run-scope-semantics",
+        "origin/fix/soak-timer-fixed-clock-schedule",
+        "origin/main",
+        "origin/phase0/containment"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-27T07:31:08+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Documents/Default Project/smartwatch-clank\nHEAD 7ed4d74291deb54306c970bf3d5c8553ba558232\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/smartwatch-clank.git",
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Smartwatch Clank",
+        "project config: pyproject.toml",
+        "git inspect (read-only)",
+        "secondary local checkout; primary is C:\\Users\\anil\\Clanks\\smartwatch-clank"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Smartwatch Clank",
+      "apparent_status": "duplicate_checkout",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml",
+        "deploy"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "tablet-clank",
+      "slug": "tablet-clank",
+      "display_name": "Tablet Clank",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Documents\\Default Project\\tablet-clank",
+      "discovery_group": "documents_nested",
+      "readme_heading": "Tablet Clank",
+      "readme_excerpt": [
+        "# Tablet Clank",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** Repository state is",
+        "> not proof of the deployed SHA, scheduler, database, notification authority,",
+        "> backup, or rollback target; those facts remain `UNKNOWN` in the fleet ledger.",
+        "",
+        "Tablet Clank is an independent, evidence-first product-intelligence system for discovering meaningful tablet catalogue changes from first-party manufacturer sources.",
+        "",
+        "Stage 1 is intentionally small: Apple's historical India sitemap remains a",
+        "disabled/untrusted source, Apple US/India iPad Pro Store configuration pages",
+        "and Samsung US XML sitemap are experimental collectors, and Honor (CN",
+        "catalogue + comparison) and TCL (global catalogue) are experimental sources"
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/tablet-clank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/tablet-clank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/tablet-clank.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "2bd8929459cb44ac840dc0cabcfb7ed91383cf45",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-27T04:58:01+05:30",
+      "latest_commit_subject": "Fix CLI collect routing: remove duplicate collector table",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/main",
+        "origin/native-macos-field-test-launcher",
+        "origin/phase0/containment"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-27T04:58:01+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Documents/Default Project/tablet-clank\nHEAD 2bd8929459cb44ac840dc0cabcfb7ed91383cf45\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/tablet-clank.git",
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Tablet Clank",
+        "project config: pyproject.toml",
+        "git inspect (read-only)",
+        "secondary local checkout; primary is C:\\Users\\anil\\Clanks\\tablet-clank"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Tablet Clank",
+      "apparent_status": "duplicate_checkout",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml",
+        "deploy",
+        "HANDOFF.md"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "dau-ecosystem",
+      "slug": "dau-ecosystem",
+      "display_name": "dau-ecosystem",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem",
+      "discovery_group": "dau_repos",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "chudbox",
+      "slug": "chudbox",
+      "display_name": "Chudbox",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\repos\\chudbox",
+      "discovery_group": "dau_repos",
+      "readme_heading": "Chudbox",
+      "readme_excerpt": [
+        "# Chudbox",
+        "",
+        "Chudbox is the **Music / Death Metal Practice Lab** for [Dead Air University](https://github.com/anil-ganti-nbc/idle-time-learning-doodad). It is a tiny in-browser heavy-rhythm machine: tap pads, hit play, mutate a lane.",
+        "",
+        "It also works **standalone**. Open it with no practice payload and it is just a sequencer. No accounts, no music-theory lecture, no setup.",
+        "",
+        "## Relationship to Dead Air University",
+        "",
+        "DAU remains authoritative for curriculum, mastery, SRS, and progression. Chudbox never writes DAU review intervals, quiz scores, or mastery.",
+        "",
+        "Practice launch and result follow the canonical [DAU Practice Labs contract](https://github.com/anil-ganti-nbc/dau-practice-labs). Chudbox is a **separate implementation repository**. It is not inside `dau-practice-labs`.",
+        ""
+      ],
+      "config_files": [
+        "package.json"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/chudbox.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/chudbox.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/chudbox.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "085b6e14c85c197da2535eb2e527072bef8a8a8f",
+      "dirty": true,
+      "dirty_count": 1,
+      "dirty_sample": [
+        " M src/routeTree.gen.ts"
+      ],
+      "latest_commit_timestamp": "2026-08-20T18:27:36Z",
+      "latest_commit_subject": "Initial public Chudbox Practice Lab.",
+      "latest_commit_author": "anil-ganti-nbc",
+      "branches": [
+        "main",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-20T18:27:36Z",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/dau-ecosystem/repos/chudbox\nHEAD 085b6e14c85c197da2535eb2e527072bef8a8a8f\nbranch refs/heads/main",
+      "origin_head_ref": null,
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/chudbox.git",
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Chudbox",
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "compiler-workbench",
+      "slug": "compiler-workbench",
+      "display_name": "Compiler Workbench",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\repos\\compiler-workbench",
+      "discovery_group": "dau_repos",
+      "readme_heading": "Compiler Workbench",
+      "readme_excerpt": [
+        "# Compiler Workbench",
+        "",
+        "Interactive compilers practice lab: transformation legality, dataflow, SSA, and the road to machine code.",
+        "",
+        "Part of the Dead Air University practice-lab ecosystem. Implements the",
+        "[`dau-practice-labs`](https://github.com/anil-ganti-nbc/dau-practice-labs)",
+        "`?practice=` contract: DAU launches this app with a signed-shape payload,",
+        "and finished takes are posted back to the opener window.",
+        "",
+        "## Run",
+        "",
+        "```sh"
+      ],
+      "config_files": [
+        "package.json"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/compiler-workbench.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/compiler-workbench.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/compiler-workbench.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "fa034974aaeb9aa12a74a5a31ee65233aacc7f6a",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-22T13:28:59+05:30",
+      "latest_commit_subject": "docker: node 26 base, npm install (matches lock generation)",
+      "latest_commit_author": "Anil Ganti",
+      "branches": [
+        "main",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-22T13:28:59+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/dau-ecosystem/repos/compiler-workbench\nHEAD fa034974aaeb9aa12a74a5a31ee65233aacc7f6a\nbranch refs/heads/main",
+      "origin_head_ref": null,
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/compiler-workbench.git",
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Compiler Workbench",
+      "apparent_status": null,
+      "deployment_hints": [
+        "Dockerfile"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "dau-practice-labs",
+      "slug": "dau-practice-labs",
+      "display_name": "DAU Practice Labs",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\repos\\dau-practice-labs",
+      "discovery_group": "dau_repos",
+      "readme_heading": "DAU Practice Labs",
+      "readme_excerpt": [
+        "# DAU Practice Labs",
+        "",
+        "Canonical contract for **DAU Practice Labs**, the umbrella of interactive companions around [Dead Air University](https://github.com/anil-ganti-nbc/idle-time-learning-doodad) (**DAU**).",
+        "",
+        "This repository is the authoritative reference for:",
+        "",
+        "- practice request schema",
+        "- practice result schema",
+        "- Practice Lab registry conventions",
+        "- transport conventions (`?practice=` and `dau:practice-result`)",
+        "- Chudbox compatibility adapter",
+        "- DAU / Practice Lab ownership boundary"
+      ],
+      "config_files": [
+        "package.json"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/dau-practice-labs.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/dau-practice-labs.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/dau-practice-labs.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "e85070d5bdda14a76d8b13de23a1ef1c79ff80de",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-20T18:24:06Z",
+      "latest_commit_subject": "Tighten gitignore for secrets, caches, IDE, and OS junk.",
+      "latest_commit_author": "anil-ganti-nbc",
+      "branches": [
+        "main",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-20T18:24:06Z",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/dau-ecosystem/repos/dau-practice-labs\nHEAD e85070d5bdda14a76d8b13de23a1ef1c79ff80de\nbranch refs/heads/main",
+      "origin_head_ref": null,
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/dau-practice-labs.git",
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "DAU Practice Labs",
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "dau-world-generator",
+      "slug": "dau-world-generator",
+      "display_name": "DAU World Generator",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\repos\\dau-world-generator",
+      "discovery_group": "dau_repos",
+      "readme_heading": "DAU World Generator",
+      "readme_excerpt": [
+        "# DAU World Generator",
+        "",
+        "**Causal, seeded, validated diagnostic worlds for [Dead Air University](https://github.com/anil-ganti-nbc/idle-time-learning-doodad).**",
+        "",
+        "A DAU World is a generated technical situation with hidden causes, observable",
+        "evidence, available actions, and consequences. Instead of asking the learner a",
+        "question, it hands them a system and requires them to work out what is",
+        "happening.",
+        "",
+        "```",
+        "world state → system rules → observable evidence",
+        "```"
+      ],
+      "config_files": [
+        "package.json"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/dau-world-generator.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/dau-world-generator.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/dau-world-generator.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "4445092f943b25be4e9265def274a41215d2197f",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-24T16:10:01+05:30",
+      "latest_commit_subject": "SME gate notes: review-scope instruction + signed-version immutability",
+      "latest_commit_author": "anil-ganti-nbc",
+      "branches": [
+        "main",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-24T16:10:01+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/dau-ecosystem/repos/dau-world-generator\nHEAD 4445092f943b25be4e9265def274a41215d2197f\nbranch refs/heads/main",
+      "origin_head_ref": null,
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/dau-world-generator.git",
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "DAU World Generator",
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "fab-lab",
+      "slug": "fab-lab",
+      "display_name": "Fab Lab",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\repos\\fab-lab",
+      "discovery_group": "dau_repos",
+      "readme_heading": "Fab Lab",
+      "readme_excerpt": [
+        "# Fab Lab",
+        "",
+        "Interactive semiconductor manufacturing practice lab: Rayleigh optics, yield economics, process sequencing.",
+        "",
+        "Part of the Dead Air University practice-lab ecosystem. Implements the",
+        "[`dau-practice-labs`](https://github.com/anil-ganti-nbc/dau-practice-labs)",
+        "`?practice=` contract: DAU launches this app with a signed-shape payload,",
+        "and finished takes are posted back to the opener window.",
+        "",
+        "## Run",
+        "",
+        "```sh"
+      ],
+      "config_files": [
+        "package.json"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/fab-lab.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/fab-lab.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/fab-lab.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "8faf552fc8119dc2673dc87a171815d0f7e27bd6",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-22T13:28:55+05:30",
+      "latest_commit_subject": "docker: node 26 base, npm install (matches lock generation)",
+      "latest_commit_author": "Anil Ganti",
+      "branches": [
+        "main",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-22T13:28:55+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/dau-ecosystem/repos/fab-lab\nHEAD 8faf552fc8119dc2673dc87a171815d0f7e27bd6\nbranch refs/heads/main",
+      "origin_head_ref": null,
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/fab-lab.git",
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Fab Lab",
+      "apparent_status": null,
+      "deployment_hints": [
+        "Dockerfile"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "idle-time-learning-doodad",
+      "slug": "idle-time-learning-doodad",
+      "display_name": "Dead Air University",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\repos\\idle-time-learning-doodad",
+      "discovery_group": "dau_repos",
+      "readme_heading": "Dead Air University",
+      "readme_excerpt": [
+        "# Dead Air University",
+        "",
+        "I have X minutes. Teach me something.",
+        "",
+        "Browser-first micro-lessons with seeded courses, quizzes, and a local review",
+        "schedule. AI generation is optional and off by default.",
+        "",
+        "Completed production courses:",
+        "",
+        "- Computer Architecture Foundations",
+        "- Modern CPU Microarchitecture",
+        "- GPU Architecture and Parallel Execution"
+      ],
+      "config_files": [
+        "package.json"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/idle-time-learning-doodad.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/idle-time-learning-doodad.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/idle-time-learning-doodad.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "bf63b3d7f5903665c9ce907abb2540bd7d2e9243",
+      "dirty": true,
+      "dirty_count": 1,
+      "dirty_sample": [
+        " M src/routeTree.gen.ts"
+      ],
+      "latest_commit_timestamp": "2026-08-20T08:18:50+05:30",
+      "latest_commit_subject": "Merge pull request #2: Dead Air University 1.0",
+      "latest_commit_author": "anil-ganti-nbc",
+      "branches": [
+        "main",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-20T08:18:50+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/dau-ecosystem/repos/idle-time-learning-doodad\nHEAD bf63b3d7f5903665c9ce907abb2540bd7d2e9243\nbranch refs/heads/main",
+      "origin_head_ref": null,
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/idle-time-learning-doodad.git",
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Dead Air University",
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "ml-lab",
+      "slug": "ml-lab",
+      "display_name": "ML Lab",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\repos\\ml-lab",
+      "discovery_group": "dau_repos",
+      "readme_heading": "ML Lab",
+      "readme_excerpt": [
+        "# ML Lab",
+        "",
+        "Interactive machine-learning practice lab: gradient descent you can break, overfitting detective, attention mechanics.",
+        "",
+        "Part of the Dead Air University practice-lab ecosystem. Implements the",
+        "[`dau-practice-labs`](https://github.com/anil-ganti-nbc/dau-practice-labs)",
+        "`?practice=` contract: DAU launches this app with a signed-shape payload,",
+        "and finished takes are posted back to the opener window.",
+        "",
+        "## Run",
+        "",
+        "```sh"
+      ],
+      "config_files": [
+        "package.json"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/ml-lab.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/ml-lab.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/ml-lab.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "9bd1add380b7a39a53203c84e3712edf6d135934",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-22T13:29:05+05:30",
+      "latest_commit_subject": "docker: node 26 base, npm install (matches lock generation)",
+      "latest_commit_author": "Anil Ganti",
+      "branches": [
+        "main",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-22T13:29:05+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/dau-ecosystem/repos/ml-lab\nHEAD 9bd1add380b7a39a53203c84e3712edf6d135934\nbranch refs/heads/main",
+      "origin_head_ref": null,
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/ml-lab.git",
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "ML Lab",
+      "apparent_status": null,
+      "deployment_hints": [
+        "Dockerfile"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "movement-bench",
+      "slug": "movement-bench",
+      "display_name": "Movement Bench",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\repos\\movement-bench",
+      "discovery_group": "dau_repos",
+      "readme_heading": "Movement Bench",
+      "readme_excerpt": [
+        "# Movement Bench",
+        "",
+        "Interactive watch-movement practice lab: gear trains, escapements, regulation and complications.",
+        "",
+        "Part of the Dead Air University practice-lab ecosystem. Implements the",
+        "[`dau-practice-labs`](https://github.com/anil-ganti-nbc/dau-practice-labs)",
+        "`?practice=` contract: DAU launches this app with a signed-shape payload,",
+        "and finished takes are posted back to the opener window.",
+        "",
+        "## Run",
+        "",
+        "```sh"
+      ],
+      "config_files": [
+        "package.json"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/movement-bench.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/movement-bench.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/movement-bench.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "c983eb98c2a5abd1ea69d01e625dab6b64bc6139",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-22T13:28:53+05:30",
+      "latest_commit_subject": "docker: node 26 base, npm install (matches lock generation)",
+      "latest_commit_author": "Anil Ganti",
+      "branches": [
+        "main",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-22T13:28:53+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/dau-ecosystem/repos/movement-bench\nHEAD c983eb98c2a5abd1ea69d01e625dab6b64bc6139\nbranch refs/heads/main",
+      "origin_head_ref": null,
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/movement-bench.git",
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Movement Bench",
+      "apparent_status": null,
+      "deployment_hints": [
+        "Dockerfile"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "os-lab",
+      "slug": "os-lab",
+      "display_name": "OS Lab",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\repos\\os-lab",
+      "discovery_group": "dau_repos",
+      "readme_heading": "OS Lab",
+      "readme_excerpt": [
+        "# OS Lab",
+        "",
+        "Interactive operating-systems practice lab: scheduling, races and deadlocks, page faults, crash consistency.",
+        "",
+        "Part of the Dead Air University practice-lab ecosystem. Implements the",
+        "[`dau-practice-labs`](https://github.com/anil-ganti-nbc/dau-practice-labs)",
+        "`?practice=` contract: DAU launches this app with a signed-shape payload,",
+        "and finished takes are posted back to the opener window.",
+        "",
+        "## Run",
+        "",
+        "```sh"
+      ],
+      "config_files": [
+        "package.json"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/os-lab.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/os-lab.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/os-lab.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "337232dd4cdbeb16b7801b08c886447d4aa46f7e",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-22T13:29:03+05:30",
+      "latest_commit_subject": "docker: node 26 base, npm install (matches lock generation)",
+      "latest_commit_author": "Anil Ganti",
+      "branches": [
+        "main",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-22T13:29:03+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/dau-ecosystem/repos/os-lab\nHEAD 337232dd4cdbeb16b7801b08c886447d4aa46f7e\nbranch refs/heads/main",
+      "origin_head_ref": null,
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/os-lab.git",
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "OS Lab",
+      "apparent_status": null,
+      "deployment_hints": [
+        "Dockerfile"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "packet-lab",
+      "slug": "packet-lab",
+      "display_name": "Packet Lab",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\repos\\packet-lab",
+      "discovery_group": "dau_repos",
+      "readme_heading": "Packet Lab",
+      "readme_excerpt": [
+        "# Packet Lab",
+        "",
+        "Interactive networking practice lab: encapsulation, TCP handshake, congestion windows, longest-prefix match.",
+        "",
+        "Part of the Dead Air University practice-lab ecosystem. Implements the",
+        "[`dau-practice-labs`](https://github.com/anil-ganti-nbc/dau-practice-labs)",
+        "`?practice=` contract: DAU launches this app with a signed-shape payload,",
+        "and finished takes are posted back to the opener window.",
+        "",
+        "## Run",
+        "",
+        "```sh"
+      ],
+      "config_files": [
+        "package.json"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/packet-lab.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/packet-lab.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/packet-lab.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "e0e0ad236f98e83d56c5132edfd60efb515172df",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-22T13:29:01+05:30",
+      "latest_commit_subject": "docker: node 26 base, npm install (matches lock generation)",
+      "latest_commit_author": "Anil Ganti",
+      "branches": [
+        "main",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-22T13:29:01+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/dau-ecosystem/repos/packet-lab\nHEAD e0e0ad236f98e83d56c5132edfd60efb515172df\nbranch refs/heads/main",
+      "origin_head_ref": null,
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/packet-lab.git",
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Packet Lab",
+      "apparent_status": null,
+      "deployment_hints": [
+        "Dockerfile"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "pipeline-playground",
+      "slug": "pipeline-playground",
+      "display_name": "Pipeline Playground",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\repos\\pipeline-playground",
+      "discovery_group": "dau_repos",
+      "readme_heading": "Pipeline Playground",
+      "readme_excerpt": [
+        "# Pipeline Playground",
+        "",
+        "Interactive CPU/GPU microarchitecture lab: step a 5-stage pipeline, predict cache misses and branches.",
+        "",
+        "Part of the Dead Air University practice-lab ecosystem. Implements the",
+        "[`dau-practice-labs`](https://github.com/anil-ganti-nbc/dau-practice-labs)",
+        "`?practice=` contract: DAU launches this app with a signed-shape payload,",
+        "and finished takes are posted back to the opener window.",
+        "",
+        "## Run",
+        "",
+        "```sh"
+      ],
+      "config_files": [
+        "package.json"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/pipeline-playground.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/pipeline-playground.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/pipeline-playground.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "427c96c594ec2d1aba2b3341ec7e3c96ef513f9f",
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": "2026-08-22T13:28:57+05:30",
+      "latest_commit_subject": "docker: node 26 base, npm install (matches lock generation)",
+      "latest_commit_author": "Anil Ganti",
+      "branches": [
+        "main",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-22T13:28:57+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/dau-ecosystem/repos/pipeline-playground\nHEAD 427c96c594ec2d1aba2b3341ec7e3c96ef513f9f\nbranch refs/heads/main",
+      "origin_head_ref": null,
+      "status_branch_line": "## main...origin/main",
+      "remote": "https://github.com/anil-ganti-nbc/pipeline-playground.git",
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Pipeline Playground",
+      "apparent_status": null,
+      "deployment_hints": [
+        "Dockerfile"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "launcher",
+      "slug": "launcher",
+      "display_name": "launcher",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\launcher",
+      "discovery_group": "dau_repos",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "UNKNOWN",
+      "evidence": [
+        "no git, README, or project config"
+      ],
+      "confidence": "low",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "ledger",
+      "slug": "ledger",
+      "display_name": "ledger",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\dau-ecosystem\\ledger",
+      "discovery_group": "dau_repos",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "UNKNOWN",
+      "evidence": [
+        "no git, README, or project config"
+      ],
+      "confidence": "low",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "clank-base",
+      "slug": "clank-base",
+      "display_name": "Clank Base",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Clank Base",
+      "discovery_group": "other",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "has_env_file": false,
+      "is_git": false,
+      "git_error": null,
+      "remotes": {},
+      "canonical_remote": null,
+      "default_branch": null,
+      "current_branch": null,
+      "head": null,
+      "dirty": null,
+      "dirty_count": 0,
+      "dirty_sample": [],
+      "latest_commit_timestamp": null,
+      "latest_commit_subject": null,
+      "latest_commit_author": null,
+      "branches": [],
+      "local_branches": [],
+      "worktrees": null,
+      "origin_head_ref": null,
+      "remote": null,
+      "classification": "UNKNOWN",
+      "evidence": [
+        "nearly empty home directory named Clank Base"
+      ],
+      "confidence": "low",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "chudbox",
+      "slug": "chudbox",
+      "display_name": "Chudbox",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\chudbox",
+      "discovery_group": "other",
+      "readme_heading": "Chudbox",
+      "readme_excerpt": [
+        "# Chudbox",
+        "",
+        "Chudbox is the **Music / Death Metal Practice Lab** for [Dead Air University](https://github.com/anil-ganti-nbc/idle-time-learning-doodad). It is a tiny in-browser heavy-rhythm machine: tap pads, hit play, mutate a lane.",
+        "",
+        "It also works **standalone**. Open it with no practice payload and it is just a sequencer. No accounts, no music-theory lecture, no setup.",
+        "",
+        "## Relationship to Dead Air University",
+        "",
+        "DAU remains authoritative for curriculum, mastery, SRS, and progression. Chudbox never writes DAU review intervals, quiz scores, or mastery.",
+        "",
+        "Practice launch and result follow the canonical [DAU Practice Labs contract](https://github.com/anil-ganti-nbc/dau-practice-labs). Chudbox is a **separate implementation repository**. It is not inside `dau-practice-labs`.",
+        ""
+      ],
+      "config_files": [
+        "package.json"
+      ],
+      "has_env_file": true,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/chudbox.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/chudbox.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/chudbox.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "9f0dd6b33d01a33af6ade5b8a531443c578bc4ad",
+      "dirty": true,
+      "dirty_count": 1,
+      "dirty_sample": [
+        " M .gitignore"
+      ],
+      "latest_commit_timestamp": "2026-08-24T18:44:59+05:30",
+      "latest_commit_subject": "build: allow NITRO_PRESET env override (default vercel unchanged) for local node-server packaging",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/chore/e2e-lint-dockerfile-fixes",
+        "origin/main",
+        "origin/platform-1.0"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-24T18:44:59+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/chudbox\nHEAD 9f0dd6b33d01a33af6ade5b8a531443c578bc4ad\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main [ahead 9]",
+      "remote": "https://github.com/anil-ganti-nbc/chudbox.git",
+      "classification": "NOT_A_CLANK",
+      "evidence": [
+        "Dead Air University lab/ecosystem artefact"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Chudbox",
+      "apparent_status": null,
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "token-stats",
+      "slug": "token-stats",
+      "display_name": "token-stats",
+      "aliases": [],
+      "local_path": "C:\\Users\\anil\\Desktop\\Quartermaster Clank\\token-stats",
+      "discovery_group": "desktop",
+      "readme_heading": null,
+      "readme_excerpt": [
+        "<!-- <CENTERED SECTION FOR GITHUB DISPLAY> -->",
+        "",
+        "<div align=\"center\">",
+        "",
+        "[![Token Stats](./.github/assets/hero-v2.png)](https://token-stats.com)",
+        "",
+        "</div>",
+        "",
+        "> A high-performance CLI tool and visualization dashboard for tracking token usage and costs across multiple AI coding agents.",
+        "",
+        "> [!NOTE]",
+        ">"
+      ],
+      "config_files": [
+        "package.json",
+        "Cargo.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/Annihilater/token-stats.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/Annihilater/token-stats.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/Annihilater/token-stats.git",
+      "default_branch": "main",
+      "current_branch": "main",
+      "head": "430d1b69e5635215310408bdfc371e49dadaed6d",
+      "dirty": true,
+      "dirty_count": 4,
+      "dirty_sample": [
+        " M crates/tokscale-cli/src/commands/usage/claude.rs",
+        " M crates/tokscale-cli/src/tui/app.rs",
+        " M crates/tokscale-cli/src/tui/ui/quartermaster.rs",
+        " M docs/TELEMETRY_MATRIX.md"
+      ],
+      "latest_commit_timestamp": "2026-08-31T09:02:30+05:30",
+      "latest_commit_subject": "fix: render recommendation fit percentages",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "main",
+        "origin",
+        "origin/main"
+      ],
+      "local_branches": [
+        {
+          "name": "main",
+          "committerdate": "2026-08-31T09:02:30+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Desktop/Quartermaster Clank/token-stats\nHEAD 430d1b69e5635215310408bdfc371e49dadaed6d\nbranch refs/heads/main",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## main...origin/main [ahead 12]",
+      "remote": "https://github.com/Annihilater/token-stats.git",
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "upstream token-stats checkout used by Quartermaster",
+        "remote is Annihilater/token-stats, not a Clank repo"
+      ],
+      "confidence": "high",
+      "apparent_purpose": null,
+      "apparent_status": "support",
+      "deployment_hints": [],
+      "relationships": []
+    },
+    {
+      "name": "watch-clank",
+      "slug": "watch-clank",
+      "display_name": "Watch Clank",
+      "aliases": [
+        "horology-clank",
+        "watch clank"
+      ],
+      "local_path": "C:\\Users\\anil\\Desktop\\Watch clank\\watch-clank",
+      "discovery_group": "desktop",
+      "readme_heading": "Watch Clank",
+      "readme_excerpt": [
+        "# Watch Clank",
+        "",
+        "> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** The unauthenticated",
+        "> dashboard supports loopback binding only; LAN, NAS, Tailscale, and public",
+        "> exposure are unsupported until an authenticated profile exists.",
+        "",
+        "> Status: Experimental / under construction",
+        "",
+        "Editorial intelligence system for discovering new analog-watch releases.",
+        "",
+        "**Stage 1** focuses exclusively on the official Casio Japan source and proves the ingestion foundation.",
+        ""
+      ],
+      "config_files": [
+        "pyproject.toml"
+      ],
+      "has_env_file": false,
+      "is_git": true,
+      "git_error": null,
+      "remotes": {
+        "origin": [
+          {
+            "url": "https://github.com/anil-ganti-nbc/watch-clank.git",
+            "kind": "(fetch)"
+          },
+          {
+            "url": "https://github.com/anil-ganti-nbc/watch-clank.git",
+            "kind": "(push)"
+          }
+        ]
+      },
+      "canonical_remote": "https://github.com/anil-ganti-nbc/watch-clank.git",
+      "default_branch": "main",
+      "current_branch": "codex/goldsmiths-uk-experimental",
+      "head": "5bc8020caca1228d8f9c60fda47e5f175268d354",
+      "dirty": true,
+      "dirty_count": 1,
+      "dirty_sample": [
+        "?? ai/handoff/INCIDENT_20260907_SEIKO_JP_CATALOGUE_NOTIFICATION_FLOOD.md"
+      ],
+      "latest_commit_timestamp": "2026-08-29T17:29:06+05:30",
+      "latest_commit_subject": "Harden Goldsmiths lane from review: offline fixture contract, parser price edges, wiring test",
+      "latest_commit_author": "Anil",
+      "branches": [
+        "codex/goldsmiths-uk-experimental",
+        "main",
+        "origin",
+        "origin/agent/watch-interactive-field-test",
+        "origin/agent/watch-macos-launcher",
+        "origin/audit/hostile-watch-clank-2026-08-21",
+        "origin/audit/watch-clank-remediation-2026-08-21",
+        "origin/codex/goldsmiths-uk-experimental",
+        "origin/codex/watch-sqlite-busy-timeout",
+        "origin/main",
+        "origin/phase0/containment"
+      ],
+      "local_branches": [
+        {
+          "name": "codex/goldsmiths-uk-experimental",
+          "committerdate": "2026-08-29T17:29:06+05:30",
+          "upstream": "origin/codex/goldsmiths-uk-experimental"
+        },
+        {
+          "name": "main",
+          "committerdate": "2026-08-27T20:25:49+05:30",
+          "upstream": "origin/main"
+        }
+      ],
+      "worktrees": "worktree C:/Users/anil/Desktop/Watch clank/watch-clank\nHEAD 5bc8020caca1228d8f9c60fda47e5f175268d354\nbranch refs/heads/codex/goldsmiths-uk-experimental",
+      "origin_head_ref": "refs/remotes/origin/main",
+      "status_branch_line": "## codex/goldsmiths-uk-experimental...origin/codex/goldsmiths-uk-experimental",
+      "remote": "https://github.com/anil-ganti-nbc/watch-clank.git",
+      "classification": "SUPPORT_COMPONENT",
+      "evidence": [
+        "git remote origin on anil-ganti-nbc",
+        "README heading: Watch Clank",
+        "project config: pyproject.toml",
+        "git inspect (read-only)",
+        "secondary local checkout; primary is C:\\Users\\anil\\Clanks\\watch-clank"
+      ],
+      "confidence": "high",
+      "apparent_purpose": "Watch Clank",
+      "apparent_status": "duplicate_checkout",
+      "deployment_hints": [
+        "Dockerfile",
+        "docker-compose.staging.yml",
+        "HANDOFF.md"
+      ],
+      "relationships": []
+    },
+    {
+      "name": "clank-ledger",
+      "slug": "clank-ledger",
+      "display_name": "clank-ledger",
+      "aliases": [],
+      "local_path": null,
+      "discovery_group": "github",
+      "github_only": true,
+      "github_repo": "anil-ganti-nbc/clank-ledger",
+      "github_description": null,
+      "remote": "https://github.com/anil-ganti-nbc/clank-ledger",
+      "canonical_remote": "https://github.com/anil-ganti-nbc/clank-ledger",
+      "is_git": false,
+      "default_branch": "jules-m0-foundation-9044736841197359665",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "is_private": false,
+      "github_updated_at": "2026-08-31T11:50:34Z",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "classification": "VERIFIED",
+      "evidence": [
+        "GitHub repository under anil-ganti-nbc"
+      ],
+      "confidence": "medium"
+    },
+    {
+      "name": "clank-systems-handbook",
+      "slug": "clank-systems-handbook",
+      "display_name": "clank-systems-handbook",
+      "aliases": [],
+      "local_path": null,
+      "discovery_group": "github",
+      "github_only": true,
+      "github_repo": "anil-ganti-nbc/clank-systems-handbook",
+      "github_description": "Clank Systems Handbook: interactive, evidence-backed engineering literacy for the Clank ecosystem. Not a programming course. DAU-compatible practice lab.",
+      "remote": "https://github.com/anil-ganti-nbc/clank-systems-handbook",
+      "canonical_remote": "https://github.com/anil-ganti-nbc/clank-systems-handbook",
+      "is_git": false,
+      "default_branch": "main",
+      "apparent_purpose": "Clank Systems Handbook: interactive, evidence-backed engineering literacy for the Clank ecosystem. Not a programming course. DAU-compatible practice lab.",
+      "apparent_status": null,
+      "is_private": false,
+      "github_updated_at": "2026-09-05T15:13:37Z",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "classification": "VERIFIED",
+      "evidence": [
+        "GitHub repository under anil-ganti-nbc",
+        "GitHub description"
+      ],
+      "confidence": "medium"
+    },
+    {
+      "name": "local-llm-eval",
+      "slug": "local-llm-eval",
+      "display_name": "local-llm-eval",
+      "aliases": [],
+      "local_path": null,
+      "discovery_group": "github",
+      "github_only": true,
+      "github_repo": "anil-ganti-nbc/local-llm-eval",
+      "github_description": null,
+      "remote": "https://github.com/anil-ganti-nbc/local-llm-eval",
+      "canonical_remote": "https://github.com/anil-ganti-nbc/local-llm-eval",
+      "is_git": false,
+      "default_branch": "main",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "is_private": true,
+      "github_updated_at": "2026-08-22T13:15:10Z",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "classification": "UNKNOWN",
+      "evidence": [
+        "GitHub repository without local checkout"
+      ],
+      "confidence": "low"
+    },
+    {
+      "name": "unified-clank-platform",
+      "slug": "unified-clank-platform",
+      "display_name": "unified-clank-platform",
+      "aliases": [
+        "ucp"
+      ],
+      "local_path": null,
+      "discovery_group": "github",
+      "github_only": true,
+      "github_repo": "anil-ganti-nbc/unified-clank-platform",
+      "github_description": null,
+      "remote": "https://github.com/anil-ganti-nbc/unified-clank-platform",
+      "canonical_remote": "https://github.com/anil-ganti-nbc/unified-clank-platform",
+      "is_git": false,
+      "default_branch": "main",
+      "apparent_purpose": null,
+      "apparent_status": null,
+      "is_private": false,
+      "github_updated_at": "2026-08-21T08:58:12Z",
+      "readme_heading": null,
+      "readme_excerpt": [],
+      "config_files": [],
+      "classification": "VERIFIED",
+      "evidence": [
+        "GitHub repository under anil-ganti-nbc"
+      ],
+      "confidence": "medium"
+    }
+  ]
+}

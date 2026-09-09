@@ -1,0 +1,90 @@
+# Event model — Foundation 0
+
+Storage timestamps are UTC (`YYYY-MM-DDTHH:MM:SS.ffffffZ`). Display may use Asia/Kolkata; the ledger does not.
+
+## Event record
+
+| Field | Notes |
+| --- | --- |
+| `event_id` | UUIDv7 |
+| `ts_utc` | When ClankOps recorded the event |
+| `clank_id` | Durable Clank id when applicable |
+| `mission_id` | Durable Mission id when applicable |
+| `session_id` | Durable Session id when applicable |
+| `event_type` | Closed set below |
+| `actor` | Free string (user, cursor, grok, …) — not vendor-locked |
+| `source` | USER / AGENT_REPORT / LOCAL_GIT / GITHUB / CI / DEPLOYMENT / SYSTEM / RECONSTRUCTED |
+| `payload_json` | Structured body |
+| `provenance_json` | Recorder metadata; reconstructed flag when relevant |
+| `schema_version` | Payload/schema generation |
+
+Corrections are new events. Existing events are never silently edited to represent new truth.
+
+## Event types
+
+| Type | Payload (minimum) |
+| --- | --- |
+| `CLANK_REGISTERED` | slug, display_name, aliases, refs, lifecycle, classification |
+| `CLANK_ALIAS_ADDED` | alias |
+| `CLANK_REF_UPDATED` | kind, value, canonical, replace_kind |
+| `CLANK_LIFECYCLE_CHANGED` | lifecycle, from_lifecycle |
+| `MISSION_CREATED` | display_id, objective, state |
+| `MISSION_STATE_CHANGED` | from_state, to_state, optional reason / superseded_by |
+| `SESSION_STARTED` | actor |
+| `SESSION_ENDED` | — |
+| `CHECKPOINT_RECORDED` | completed, current_work, next_action, outstanding, blockers, tests, branch, head, working_tree, artifacts, notes |
+| `TASK_CREATED` | task_id, title, state |
+| `TASK_STATE_CHANGED` | task_id, from_state, to_state |
+| `FEATURE_ADDED` | feature_id, name, state |
+| `FEATURE_STATE_CHANGED` | feature_id, from_state, to_state |
+| `DECISION_RECORDED` | decision_id, statement, why, alternatives |
+| `DECISION_SUPERSEDED` | decision_id, superseded_by |
+| `BLOCKER_ADDED` | blocker_id, description |
+| `BLOCKER_RESOLVED` | blocker_id, resolution |
+| `ARTIFACT_ATTACHED` | artifact_id, kind, ref, artifact_source, metadata |
+| `RELATIONSHIP_RECORDED` | relationship_id, from_clank_id, to_clank_id, kind |
+| `CENSUS_CANDIDATE_RECORDED` | full candidate snapshot |
+
+## Mission states
+
+`PLANNED` → `ACTIVE` / `PAUSED` / `BLOCKED` / `ABANDONED` / `SUPERSEDED`
+
+`ACTIVE` → `PAUSED` / `BLOCKED` / `COMPLETED` / `ABANDONED` / `SUPERSEDED`
+
+`PAUSED` → `ACTIVE` / `BLOCKED` / `ABANDONED` / `SUPERSEDED`
+
+`BLOCKED` → `ACTIVE` / `PAUSED` / `ABANDONED` / `SUPERSEDED`
+
+`COMPLETED` / `ABANDONED` → `SUPERSEDED` only
+
+`SUPERSEDED` is terminal.
+
+Invalid transitions raise; they do not write events.
+
+## Feature states
+
+`PROPOSED`, `PLANNED`, `IN_PROGRESS`, `PRESENT`, `DEPRECATED`, `REMOVED`, `REJECTED`
+
+## Task states
+
+`TODO`, `IN_PROGRESS`, `BLOCKED`, `DONE`, `CANCELLED`
+
+Done and cancelled are terminal.
+
+## Checkpoint
+
+A checkpoint is how ClankOps answers “where exactly did we leave this?”. Fields are optional; unknown stays unknown. `next_action` is only shown if recorded. Foundation 0 never asks an LLM to invent one.
+
+`--capture-git` attaches local branch / HEAD / dirty-or-clean as `LOCAL_GIT` evidence. That is not a GitHub confirmation.
+
+## Artifacts
+
+Artifacts *reference* external systems (commit SHA, PR URL, test run id). They do not duplicate those databases. `artifact_source` must reflect how the reference was obtained (`AGENT_REPORT` vs `LOCAL_GIT` vs `GITHUB` vs `CI`).
+
+## Relationships
+
+Recommended kinds: `DEPENDS_ON`, `PROVIDES_TO`, `SUPERSEDES`, `REPLACED_BY`, `SHARES_RUNTIME_WITH`, `GOVERNED_BY`, `DEPLOYED_WITH`, `DUPLICATE_CHECKOUT_OF`, `LOCAL_COPY_OF`. The column is a string; new kinds do not require a migration.
+
+## Projections
+
+Tables `clanks`, `missions`, `sessions`, `features`, `tasks`, `decisions`, `blockers`, `artifacts`, `relationships`, `checkpoints`, `census_candidates`, plus alias/ref tables, are derived. `clankctl rebuild` wipes and replays. Tests assert byte-for-byte deterministic rebuilt state.
