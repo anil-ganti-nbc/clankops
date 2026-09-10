@@ -55,6 +55,9 @@ Adopt remaining VERIFIED census identities (duplicate checkouts become extra ref
 
 ```powershell
 python -m clankops --actor cursor fleet-adopt-verified --file data\bootstrap\clank_census.json
+python -m clankops --json coverage
+python -m clankops --json sessions open
+python -m clankops --json sessions stale --older-than 24h
 python -m clankops terminal
 ```
 

@@ -1574,7 +1574,7 @@ def open_store(
     )
 
 
-def open_readonly_store(path: str | Path) -> Store:
+def open_readonly_store(path: str | Path, *, clock: Clock | None = None) -> Store:
     from clankops.db import connect_readonly
     from clankops.errors import ValidationError
 
@@ -1584,7 +1584,7 @@ def open_readonly_store(path: str | Path) -> Store:
         raise ValidationError(str(exc)) from exc
     return Store(
         conn=conn,
-        clock=SystemClock(),
+        clock=clock or SystemClock(),
         default_actor="terminal",
         default_source=EventSource.SYSTEM,
         default_session_id=None,
