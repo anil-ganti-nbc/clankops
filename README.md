@@ -2,7 +2,7 @@
 
 Development control plane and institutional memory for the Clank ecosystem.
 
-Foundation 1 is live-fleet adoption on top of the Foundation 0.1 ledger. Current state is a projection of an append-only event history. The goal is to make it impossible to lose the state, rationale, outstanding work, or next action of any Clank.
+Foundation 2 is fleet coverage plus a read-only Terminal alpha on top of the Foundation 1 ledger. Current state is a projection of an append-only event history. The goal is to make it impossible to lose the state, rationale, outstanding work, or next action of any Clank.
 
 ```text
 clankctl brief oem-radar
@@ -12,7 +12,7 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 1 (adoption). Local-first Python 3.14+ + SQLite. No UI. No production deployment.
+Foundation 2 (fleet coverage + Terminal alpha). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 
@@ -51,6 +51,15 @@ python -m clankops --actor cursor handoff COPS-000003 --state PAUSED --current "
 
 `work resume` reuses an unfinished Mission. `handoff` is checkpoint + git capture + Mission state in one step. See [Foundation 1](docs/FOUNDATION_1.md).
 
+Adopt remaining VERIFIED census identities (duplicate checkouts become extra refs, not second Clanks):
+
+```powershell
+python -m clankops --actor cursor fleet-adopt-verified --file data\bootstrap\clank_census.json
+python -m clankops terminal
+```
+
+The Terminal is localhost-only and read-only. It does not schedule collection or deploy anything.
+
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
@@ -59,6 +68,7 @@ python -m clankops --actor cursor handoff COPS-000003 --state PAUSED --current "
 - [Agent logging contract](docs/AGENT_LOGGING_CONTRACT.md)
 - [Cursor agent contract](docs/CURSOR_AGENT_CONTRACT.md)
 - [Foundation 1 adoption](docs/FOUNDATION_1.md)
+- [Foundation 2 fleet + Terminal](docs/FOUNDATION_2.md)
 - [Future scope](docs/FUTURE_SCOPE.md)
 
 ## Tests

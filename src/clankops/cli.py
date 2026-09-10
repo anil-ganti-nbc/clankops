@@ -719,10 +719,48 @@ def cmd_census_import_file(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fleet_adopt_verified(args: argparse.Namespace) -> int:
+    census = load_census(args.file)
+    store = _store(args)
+    stats = store.adopt_verified_census(census, actor=args.actor, source=EventSource.RECONSTRUCTED)
+    _print(
+        f"adopted verified fleet {stats}",
+        as_json=args.json,
+        payload=stats,
+    )
+    store.conn.close()
+    return 0
+
+
+def cmd_terminal(args: argparse.Namespace) -> int:
+    from clankops.store import open_readonly_store
+    from clankops.terminal import DEFAULT_HOST, serve
+
+    host = args.host or DEFAULT_HOST
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        raise ValidationError("Terminal alpha binds localhost only")
+    store = open_readonly_store(args.db)
+    httpd = serve(store, host=host, port=args.port)
+    bound = httpd.server_address
+    _print(
+        f"ClankOps Terminal (read-only) http://{bound[0]}:{bound[1]}/",
+        as_json=args.json,
+        payload={"host": bound[0], "port": bound[1], "read_only": True},
+    )
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.server_close()
+        store.conn.close()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="clankctl",
-        description="ClankOps development ledger (Foundation 1)",
+        description="ClankOps development ledger (Foundation 2)",
     )
     parser.add_argument(
         "--db",
@@ -757,6 +795,22 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("census-import", help="import an existing census JSON artefact")
     p.add_argument("file")
     p.set_defaults(func=cmd_census_import_file)
+
+    p = sub.add_parser(
+        "fleet-adopt-verified",
+        help="register remaining VERIFIED census Clanks; extra checkouts become refs",
+    )
+    p.add_argument(
+        "--file",
+        default=str(Path("data/bootstrap/clank_census.json")),
+        help="census JSON (default: data/bootstrap/clank_census.json)",
+    )
+    p.set_defaults(func=cmd_fleet_adopt_verified)
+
+    p = sub.add_parser("terminal", help="read-only localhost Clank Terminal (alpha)")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8765)
+    p.set_defaults(func=cmd_terminal)
 
     p = sub.add_parser("list", help="list registered Clanks")
     p.set_defaults(func=cmd_list)
