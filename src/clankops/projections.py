@@ -1,7 +1,8 @@
 """Projection application and rebuild.
 
-Current state is always a function of the event log. `rebuild_projections`
-wipes projection tables and replays every event in (ts_utc, event_id) order.
+Current state is a function of the event log. Replay uses canonical
+`ledger_seq` order. Mission display-id allocation is reseeded from
+MISSION_CREATED events so a fresh database cannot reissue COPS-000001.
 """
 
 from __future__ import annotations
@@ -11,7 +12,8 @@ import sqlite3
 from typing import Any, Callable
 
 from clankops.enums import EventType
-from clankops.events import Event, event_from_row
+from clankops.events import Event, LEDGER_ORDER_SQL, event_from_row
+from clankops.ids import parse_mission_display_n
 from clankops.schema import PROJECTION_TABLES
 
 Handler = Callable[[sqlite3.Connection, Event], None]
@@ -161,8 +163,8 @@ def _apply_checkpoint(conn: sqlite3.Connection, event: Event) -> None:
         INSERT INTO checkpoints (
             checkpoint_id, mission_id, clank_id, event_id, recorded_utc,
             completed, current_work, next_action, outstanding_json, blockers_json,
-            tests, branch, head, working_tree, artifacts_json, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            tests, branch, head, working_tree, artifacts_json, notes, session_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             p.get("checkpoint_id") or event.event_id,
@@ -181,6 +183,7 @@ def _apply_checkpoint(conn: sqlite3.Connection, event: Event) -> None:
             p.get("working_tree"),
             json.dumps(p.get("artifacts") or [], sort_keys=True),
             p.get("notes"),
+            event.session_id,
         ),
     )
 
@@ -402,16 +405,42 @@ def wipe_projections(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA foreign_keys = ON")
 
 
+def max_issued_mission_display_n(conn: sqlite3.Connection) -> int:
+    """Highest COPS-N issued, derived only from immutable MISSION_CREATED events."""
+    highest = 0
+    rows = conn.execute(
+        "SELECT payload_json FROM events WHERE event_type = ?",
+        (EventType.MISSION_CREATED,),
+    ).fetchall()
+    for row in rows:
+        payload = json.loads(row[0])
+        parsed = parse_mission_display_n(payload.get("display_id"))
+        if parsed is not None and parsed > highest:
+            highest = parsed
+    return highest
+
+
+def reseed_mission_display_sequence(conn: sqlite3.Connection) -> int:
+    nxt = max_issued_mission_display_n(conn) + 1
+    conn.execute(
+        """
+        INSERT INTO id_sequences(name, next_value) VALUES ('mission_display', ?)
+        ON CONFLICT(name) DO UPDATE SET next_value = excluded.next_value
+        """,
+        (nxt,),
+    )
+    return nxt
+
+
 def rebuild_projections(conn: sqlite3.Connection) -> int:
     """Rebuild every projection table from the event log. Returns event count."""
     wipe_projections(conn)
-    rows = conn.execute(
-        "SELECT * FROM events ORDER BY ts_utc ASC, event_id ASC"
-    ).fetchall()
+    rows = conn.execute(f"SELECT * FROM events {LEDGER_ORDER_SQL}").fetchall()
     count = 0
     for row in rows:
         apply_event(conn, event_from_row(row))
         count += 1
+    reseed_mission_display_sequence(conn)
     conn.commit()
     return count
 

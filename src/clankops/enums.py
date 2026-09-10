@@ -122,8 +122,6 @@ RECOMMENDED_RELATIONSHIP_KINDS = (
     "LOCAL_COPY_OF",
 )
 
-# Mission transitions. Terminal states still allow SUPERSEDED so history
-# can record replacement without rewriting the completed/abandoned row.
 MISSION_TRANSITIONS: dict[MissionState, frozenset[MissionState]] = {
     MissionState.PLANNED: frozenset(
         {
@@ -163,6 +161,16 @@ MISSION_TRANSITIONS: dict[MissionState, frozenset[MissionState]] = {
     MissionState.ABANDONED: frozenset({MissionState.SUPERSEDED}),
     MissionState.SUPERSEDED: frozenset(),
 }
+
+MISSION_WORK_STOPPED = frozenset(
+    {
+        MissionState.PAUSED,
+        MissionState.BLOCKED,
+        MissionState.COMPLETED,
+        MissionState.ABANDONED,
+        MissionState.SUPERSEDED,
+    }
+)
 
 TASK_TRANSITIONS: dict[TaskState, frozenset[TaskState]] = {
     TaskState.TODO: frozenset(

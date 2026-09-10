@@ -1,10 +1,16 @@
-"""Append-only event records."""
+"""Append-only event records.
+
+`event_id` is the durable globally unique identity (UUIDv7).
+`ledger_seq` is the canonical order within this SQLite ledger. It is
+assigned at append time, unique, monotonic, and immutable. Timestamps
+remain evidence; they are not the ordering primitive.
+"""
 
 from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from clankops import SCHEMA_VERSION
@@ -12,6 +18,13 @@ from clankops.clock import Clock, SystemClock, isoformat_utc
 from clankops.enums import EventSource, EventType
 from clankops.errors import AppendOnlyViolation
 from clankops.ids import new_id
+
+LEDGER_ORDER_SQL = "ORDER BY ledger_seq ASC"
+
+EVENT_COLUMNS = (
+    "ledger_seq, event_id, ts_utc, clank_id, mission_id, session_id, "
+    "event_type, actor, source, payload_json, provenance_json, schema_version"
+)
 
 
 def dumps(payload: Any) -> str:
@@ -31,9 +44,11 @@ class Event:
     clank_id: str | None = None
     mission_id: str | None = None
     session_id: str | None = None
+    ledger_seq: int | None = None
 
     def to_row(self) -> tuple[Any, ...]:
         return (
+            self.ledger_seq,
             self.event_id,
             self.ts_utc,
             self.clank_id,
@@ -49,6 +64,7 @@ class Event:
 
 
 def event_from_row(row: sqlite3.Row) -> Event:
+    keys = set(row.keys())
     return Event(
         event_id=row["event_id"],
         ts_utc=row["ts_utc"],
@@ -61,7 +77,32 @@ def event_from_row(row: sqlite3.Row) -> Event:
         payload=json.loads(row["payload_json"]),
         provenance=json.loads(row["provenance_json"]),
         schema_version=row["schema_version"],
+        ledger_seq=row["ledger_seq"] if "ledger_seq" in keys else None,
     )
+
+
+def allocate_ledger_seq(conn: sqlite3.Connection) -> int:
+    """Monotonic seq assigned by this ledger at append time."""
+    row = conn.execute("SELECT next_seq FROM ledger_head WHERE id = 1").fetchone()
+    if row is None:
+        conn.execute("INSERT INTO ledger_head(id, next_seq) VALUES (1, 2)")
+        return 1
+    seq = int(row[0])
+    conn.execute("UPDATE ledger_head SET next_seq = ? WHERE id = 1", (seq + 1,))
+    return seq
+
+
+def reseed_ledger_head(conn: sqlite3.Connection) -> int:
+    row = conn.execute("SELECT COALESCE(MAX(ledger_seq), 0) FROM events").fetchone()
+    nxt = int(row[0]) + 1
+    conn.execute(
+        """
+        INSERT INTO ledger_head(id, next_seq) VALUES (1, ?)
+        ON CONFLICT(id) DO UPDATE SET next_seq = excluded.next_seq
+        """,
+        (nxt,),
+    )
+    return nxt
 
 
 def append_event(
@@ -90,15 +131,13 @@ def append_event(
         clank_id=clank_id,
         mission_id=mission_id,
         session_id=session_id,
+        ledger_seq=allocate_ledger_seq(conn),
     )
     try:
         conn.execute(
-            """
-            INSERT INTO events (
-                event_id, ts_utc, clank_id, mission_id, session_id,
-                event_type, actor, source, payload_json, provenance_json,
-                schema_version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            f"""
+            INSERT INTO events ({EVENT_COLUMNS})
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             event.to_row(),
         )
@@ -112,9 +151,10 @@ def list_events(
     *,
     clank_id: str | None = None,
     mission_id: str | None = None,
+    session_id: str | None = None,
     limit: int | None = None,
 ) -> list[Event]:
-    sql = "SELECT * FROM events"
+    sql = f"SELECT {EVENT_COLUMNS} FROM events"
     params: list[Any] = []
     clauses: list[str] = []
     if clank_id:
@@ -123,13 +163,28 @@ def list_events(
     if mission_id:
         clauses.append("mission_id = ?")
         params.append(mission_id)
+    if session_id:
+        clauses.append("session_id = ?")
+        params.append(session_id)
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
-    sql += " ORDER BY ts_utc ASC, event_id ASC"
+    sql += f" {LEDGER_ORDER_SQL}"
     if limit is not None:
         sql += " LIMIT ?"
         params.append(limit)
     return [event_from_row(row) for row in conn.execute(sql, params)]
+
+
+def copy_events(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
+    """Copy ONLY the immutable event log into dst, preserving ledger_seq."""
+    rows = src.execute(f"SELECT {EVENT_COLUMNS} FROM events {LEDGER_ORDER_SQL}").fetchall()
+    dst.executemany(
+        f"INSERT INTO events ({EVENT_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [tuple(row) for row in rows],
+    )
+    reseed_ledger_head(dst)
+    dst.commit()
+    return len(rows)
 
 
 def assert_append_only(conn: sqlite3.Connection) -> None:
@@ -147,3 +202,19 @@ def assert_append_only(conn: sqlite3.Connection) -> None:
         return
     conn.rollback()
     raise AppendOnlyViolation("events UPDATE was not blocked")
+
+
+def assert_ledger_seq_immutable(conn: sqlite3.Connection) -> None:
+    row = conn.execute("SELECT event_id, ledger_seq FROM events LIMIT 1").fetchone()
+    if row is None:
+        return
+    try:
+        conn.execute(
+            "UPDATE events SET ledger_seq = ledger_seq + 1 WHERE event_id = ?",
+            (row[0],),
+        )
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return
+    conn.rollback()
+    raise AppendOnlyViolation("ledger_seq UPDATE was not blocked")

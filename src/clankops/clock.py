@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 
@@ -23,6 +23,21 @@ class FrozenClock:
 
     def now(self) -> datetime:
         return self._instant
+
+
+class TickingClock:
+    """Advances by a fixed delta on every `now()` call. For duration tests."""
+
+    def __init__(self, instant: datetime, step: timedelta | None = None) -> None:
+        if instant.tzinfo is None:
+            raise ValueError("clock instants must be timezone-aware UTC")
+        self._instant = instant.astimezone(timezone.utc)
+        self._step = step or timedelta(seconds=1)
+
+    def now(self) -> datetime:
+        current = self._instant
+        self._instant = self._instant + self._step
+        return current
 
 
 def isoformat_utc(dt: datetime) -> str:
