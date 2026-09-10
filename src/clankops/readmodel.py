@@ -335,6 +335,7 @@ def fleet_home(
         "anomalies": len(session_anomalies(store, now=instant, stale_after=stale_after)),
         "git_drift": sum(1 for row in table if row.get("reconcile_status") == "drift"),
         "git_aligned": sum(1 for row in table if row.get("reconcile_status") == "aligned"),
+        "git_partial": sum(1 for row in table if row.get("reconcile_status") == "partial"),
     }
     return {"summary": summary, "coverage": coverage, "rows": table, "open_sessions": open_rows}
 

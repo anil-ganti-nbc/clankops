@@ -257,7 +257,8 @@ def _fleet_html(home: dict[str, Any]) -> str:
             "git evidence",
             (
                 f"drift {summary.get('git_drift') or 0} · "
-                f"aligned {summary.get('git_aligned') or 0}"
+                f"aligned {summary.get('git_aligned') or 0} · "
+                f"partial {summary.get('git_partial') or 0}"
             ),
         ),
     ]
@@ -373,14 +374,41 @@ def _dossier_html(payload: dict[str, Any]) -> str:
     local = rec.get("observed_local") or {}
     github = rec.get("observed_github") or {}
     recorded = rec.get("recorded") or {}
-    drift_table = (
-        "<p class=\"muted\">none — live observation matches recorded claims</p>"
-        if not rec_rows
-        else (
+    status = rec.get("status") or "unknown"
+    captions = {
+        "aligned": "all comparable recorded claims corroborated",
+        "partial": "some recorded claims corroborated; others unobservable",
+        "no-record": "no recorded Git state to reconcile",
+        "unknown": "recorded state could not be independently verified",
+        "drift": "at least one independently compared fact contradicts the recorded state",
+    }
+    caption = captions.get(status, captions["unknown"])
+    if status == "drift" and rec_rows:
+        result_block = (
+            f"<p class=\"muted\">{html.escape(caption)}</p>"
             "<table><thead><tr><th>kind</th><th>field</th><th>source</th><th>recorded</th><th>observed</th></tr></thead><tbody>"
             + "".join(rec_rows)
             + "</tbody></table>"
         )
+    else:
+        result_block = f"<p class=\"muted\">{html.escape(caption)}</p>"
+    cmp_rows = []
+    for field, item in (rec.get("comparisons") or {}).items():
+        cmp_rows.append(
+            "<tr>"
+            f"<td>{html.escape(field)}</td>"
+            f"<td>{_mark(str(item.get('status') or 'unknown'))}</td>"
+            f"<td>{_mark(str(item.get('source') or 'none'))}<span class=\"src\"> {html.escape(_unknown(item.get('source')))}</span></td>"
+            f"<td>{html.escape(_unknown(item.get('recorded')))}</td>"
+            f"<td>{html.escape(_unknown(item.get('observed')))}</td>"
+            "</tr>"
+        )
+    cmp_table = (
+        "<table><thead><tr><th>field</th><th>coverage</th><th>source</th><th>recorded</th><th>observed</th></tr></thead><tbody>"
+        + "".join(cmp_rows)
+        + "</tbody></table>"
+        if cmp_rows
+        else ""
     )
     github_err = github.get("error") if github else "not requested"
     prs = github.get("open_prs") if github else []
@@ -390,14 +418,15 @@ def _dossier_html(payload: dict[str, Any]) -> str:
     ) or "none"
     reconcile_section = f"""
 <h2>RECONCILIATION</h2>
-<p class="muted">live LOCAL_GIT / GITHUB observation vs recorded claims. History is not rewritten.</p>
+<p class="muted">Independent LOCAL_GIT / GITHUB observation vs recorded claims. Observer success is not corroboration. History is not rewritten.</p>
 <table>
-  <tr><th>status</th><td>{_mark(_unknown(rec.get('status')))}</td></tr>
+  <tr><th>status</th><td>{_mark(_unknown(status))} {html.escape(caption)}</td></tr>
   <tr><th>recorded claim</th><td>{html.escape(_unknown(recorded.get('branch')))} / {html.escape(_unknown(recorded.get('head')))} / {html.escape(_unknown(recorded.get('working_tree')))} [{html.escape(_unknown(recorded.get('event_source')))}]</td></tr>
   <tr><th>LOCAL_GIT</th><td>{_mark('LOCAL_GIT')} {html.escape(_unknown(local.get('branch')))} / {html.escape(_unknown(local.get('head')))} / {html.escape(_unknown(local.get('working_tree')))} {html.escape(local.get('error') or '')}</td></tr>
   <tr><th>GITHUB</th><td>{_mark('GITHUB')} default {html.escape(_unknown(github.get('default_branch') if github else None))} / {html.escape(_unknown(github.get('default_branch_head') if github else None))} PRs {html.escape(pr_text)} {html.escape(str(github_err or ''))}</td></tr>
 </table>
-{drift_table}
+{cmp_table}
+{result_block}
 """
     trows = []
     for event in payload.get("timeline") or []:

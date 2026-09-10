@@ -11,12 +11,19 @@ from clankops.enums import EventSource
 
 GH_TIMEOUT_SEC = 45
 _GITHUB_REPO = re.compile(r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/.]+)", re.I)
+_OWNER_REPO = re.compile(r"^(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+?)(?:\.git)?$", re.I)
 
 
 def github_repo_id(url: str | None) -> str | None:
     if not url:
         return None
-    match = _GITHUB_REPO.search(url.strip())
+    text = url.strip()
+    match = _GITHUB_REPO.search(text)
+    if match:
+        return f"{match.group('owner')}/{match.group('repo')}"
+    if "\\" in text or ":" in text or text.startswith("."):
+        return None
+    match = _OWNER_REPO.match(text)
     if not match:
         return None
     return f"{match.group('owner')}/{match.group('repo')}"

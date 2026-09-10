@@ -2,6 +2,9 @@
 
 Read-only. Never appends events, never updates projections, never fetches
 into a product checkout, never closes Sessions, never rewrites history.
+
+`aligned` is corroboration, not observer availability. A source with
+`ok=True` is not evidence by itself.
 """
 
 from __future__ import annotations
@@ -17,6 +20,10 @@ from clankops.timefmt import short_head
 
 InspectLocal = Callable[[str], dict[str, Any]]
 InspectGitHub = Callable[[str | None], dict[str, Any]]
+
+RECORDED_FIELDS = ("branch", "head", "working_tree")
+COMPARISON_STATUSES = ("corroborated", "contradicted", "unobservable", "not_recorded")
+RECONCILE_STATUSES = ("drift", "aligned", "partial", "no-record", "unknown")
 
 
 def working_tree_kind(label: str | None) -> str | None:
@@ -51,20 +58,95 @@ def heads_match(left: str | None, right: str | None) -> bool | None:
     return a[:n] == b[:n]
 
 
-def _drift(
-    kind: str,
-    field: str,
-    recorded: Any,
-    observed: Any,
-    source: str,
-) -> dict[str, Any]:
-    return {
-        "kind": kind,
-        "field": field,
-        "recorded": recorded,
-        "observed": observed,
-        "source": source,
+def _is_detached(branch: str | None) -> bool:
+    return not branch or str(branch).strip() in {"HEAD", "detached"}
+
+
+def _truthy_canonical(value: Any) -> bool:
+    return value in {True, 1, "1"}
+
+
+def _unique_github_ids(refs: list[dict[str, Any]], *, kind: str | None, canonical: bool | None) -> list[str]:
+    found: list[str] = []
+    seen: set[str] = set()
+    for ref in refs:
+        if kind is not None and ref.get("ref_kind") != kind:
+            continue
+        if canonical is True and not _truthy_canonical(ref.get("is_canonical")):
+            continue
+        if canonical is False and _truthy_canonical(ref.get("is_canonical")):
+            continue
+        if ref.get("ref_kind") not in {"git_remote", "github_repo"}:
+            continue
+        ident = github_repo_id(ref.get("ref_value"))
+        if not ident or ident in seen:
+            continue
+        seen.add(ident)
+        found.append(ident)
+    return sorted(found)
+
+
+def github_repo_choice(refs: list[dict[str, Any]] | None) -> dict[str, Any]:
+    """Pick a GitHub repo without guessing among conflicting identities.
+
+    Order is independent of insertion/query order:
+
+    1. unique canonical ``github_repo``
+    2. unique canonical GitHub ``git_remote``
+    3. unique GitHub identity among remaining refs
+    4. otherwise ambiguity or none — do not guess
+    """
+    rows = list(refs or [])
+    empty = {
+        "repo": None,
+        "rule": None,
+        "candidates": [],
+        "ambiguous": False,
+        "error": None,
     }
+    canonical_repos = _unique_github_ids(rows, kind="github_repo", canonical=True)
+    if len(canonical_repos) == 1:
+        return {**empty, "repo": canonical_repos[0], "rule": "canonical_github_repo", "candidates": canonical_repos}
+    if len(canonical_repos) > 1:
+        return {
+            **empty,
+            "candidates": canonical_repos,
+            "ambiguous": True,
+            "error": "ambiguous canonical github_repo refs: " + ", ".join(canonical_repos),
+        }
+
+    canonical_remotes = _unique_github_ids(rows, kind="git_remote", canonical=True)
+    if len(canonical_remotes) == 1:
+        return {
+            **empty,
+            "repo": canonical_remotes[0],
+            "rule": "canonical_git_remote",
+            "candidates": canonical_remotes,
+        }
+    if len(canonical_remotes) > 1:
+        return {
+            **empty,
+            "candidates": canonical_remotes,
+            "ambiguous": True,
+            "error": "ambiguous canonical git_remote refs: " + ", ".join(canonical_remotes),
+        }
+
+    remaining = _unique_github_ids(rows, kind=None, canonical=None)
+    if len(remaining) == 1:
+        return {**empty, "repo": remaining[0], "rule": "unique_github_ref", "candidates": remaining}
+    if len(remaining) > 1:
+        return {
+            **empty,
+            "candidates": remaining,
+            "ambiguous": True,
+            "error": "ambiguous GitHub refs: " + ", ".join(remaining),
+        }
+    return {**empty, "error": "no GitHub repo"}
+
+
+def github_repo_for_clank(store: Store, clank_id: str) -> dict[str, Any]:
+    detail = store.clank_detail(clank_id)
+    return github_repo_choice(detail.get("refs") or [])
 
 
 def _checkpoint_event(store: Store, checkpoint: dict[str, Any] | None) -> Any | None:
@@ -80,14 +162,82 @@ def _checkpoint_event(store: Store, checkpoint: dict[str, Any] | None) -> Any | 
     return event_from_row(row) if row else None
 
 
-def _github_repo_for_clank(store: Store, clank_id: str) -> str | None:
-    detail = store.clank_detail(clank_id)
-    for ref in detail.get("refs") or []:
-        if ref["ref_kind"] in {"git_remote", "github_repo"}:
-            ident = github_repo_id(ref["ref_value"])
-            if ident:
-                return ident
-    return None
+def _comparison(status: str, *, source: str | None = None, recorded: Any = None, observed: Any = None) -> dict[str, Any]:
+    return {
+        "status": status,
+        "source": source,
+        "recorded": recorded,
+        "observed": observed,
+    }
+
+
+def _reduce_checks(recorded: Any, checks: list[tuple[str, Any, bool | None]]) -> dict[str, Any]:
+    """Independent checks: True corroborates, False contradicts, None is skipped."""
+    if recorded is None or recorded == "":
+        return _comparison("not_recorded")
+    corroborated: tuple[str, Any] | None = None
+    contradicted: tuple[str, Any] | None = None
+    for source, observed, match in checks:
+        if match is True and corroborated is None:
+            corroborated = (source, observed)
+        elif match is False and contradicted is None:
+            contradicted = (source, observed)
+    if contradicted:
+        return _comparison(
+            "contradicted",
+            source=contradicted[0],
+            recorded=recorded,
+            observed=contradicted[1],
+        )
+    if corroborated:
+        return _comparison(
+            "corroborated",
+            source=corroborated[0],
+            recorded=recorded,
+            observed=corroborated[1],
+        )
+    return _comparison("unobservable", recorded=recorded)
+
+
+def _status_from_comparisons(comparisons: dict[str, dict[str, Any]]) -> str:
+    relevant = [comparisons[field] for field in RECORDED_FIELDS if comparisons[field]["status"] != "not_recorded"]
+    if not relevant:
+        return "no-record"
+    statuses = {item["status"] for item in relevant}
+    if "contradicted" in statuses:
+        return "drift"
+    if statuses == {"corroborated"}:
+        return "aligned"
+    if "corroborated" in statuses:
+        return "partial"
+    return "unknown"
+
+
+def _drift_rows(comparisons: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for field, item in comparisons.items():
+        if item["status"] != "contradicted":
+            continue
+        rows.append(
+            {
+                "kind": "mismatch",
+                "field": field,
+                "recorded": item.get("recorded"),
+                "observed": item.get("observed"),
+                "source": item.get("source"),
+            }
+        )
+    return rows
+
+
+def _matching_prs(observed_github: dict[str, Any] | None, recorded_branch: str | None) -> list[dict[str, Any]]:
+    if not observed_github or not recorded_branch:
+        return []
+    return [
+        pr
+        for pr in (observed_github.get("open_prs") or [])
+        if pr.get("head_ref") and str(pr.get("head_ref")) == str(recorded_branch)
+    ]
 
 
 def reconcile_clank(
@@ -132,6 +282,7 @@ def reconcile_clank(
         "ahead": None,
         "behind": None,
         "upstream": None,
+        "detached": False,
     }
     if not path:
         observed_local["error"] = "no local_path"
@@ -143,152 +294,123 @@ def reconcile_clank(
         elif not git.get("is_git"):
             observed_local["error"] = "not a git checkout"
         else:
+            branch = git.get("current_branch")
             observed_local.update(
                 {
                     "ok": True,
-                    "branch": git.get("current_branch"),
+                    "branch": branch,
                     "head": git.get("head"),
                     "working_tree": working_tree_label(git),
                     "dirty": git.get("dirty"),
                     "ahead": git.get("ahead"),
                     "behind": git.get("behind"),
                     "upstream": git.get("upstream"),
+                    "detached": _is_detached(branch),
                 }
             )
 
+    choice = github_repo_for_clank(store, detail["clank_id"])
     observed_github: dict[str, Any] | None = None
-    repo = _github_repo_for_clank(store, detail["clank_id"])
     if include_github:
-        observed_github = remote_fn(repo)
+        if choice.get("repo"):
+            observed_github = remote_fn(choice["repo"])
+            observed_github = {
+                **(observed_github or {}),
+                "selection_rule": choice.get("rule"),
+                "candidates": choice.get("candidates") or [],
+            }
+        else:
+            observed_github = {
+                "source": EventSource.GITHUB,
+                "ok": False,
+                "error": choice.get("error") or "no GitHub repo",
+                "repo": None,
+                "default_branch": None,
+                "default_branch_head": None,
+                "open_prs": [],
+                "ambiguous": bool(choice.get("ambiguous")),
+                "candidates": choice.get("candidates") or [],
+                "selection_rule": choice.get("rule"),
+            }
 
-    drift: list[dict[str, Any]] = []
-    evidence = git_evidence or {}
-    if evidence.get("head") and recorded["head"]:
-        if heads_match(evidence.get("head"), recorded["head"]) is False:
-            drift.append(
-                _drift(
-                    "claim_vs_git_evidence",
-                    "head",
-                    recorded["head"],
-                    evidence.get("head"),
-                    EventSource.LOCAL_GIT,
-                )
-            )
-    if evidence.get("branch") and recorded["branch"]:
-        if str(evidence.get("branch")).strip() != str(recorded["branch"]).strip():
-            drift.append(
-                _drift(
-                    "claim_vs_git_evidence",
-                    "branch",
-                    recorded["branch"],
-                    evidence.get("branch"),
-                    EventSource.LOCAL_GIT,
-                )
-            )
+    github_ok = bool(observed_github and observed_github.get("ok"))
+    default_branch = observed_github.get("default_branch") if github_ok else None
+    default_head = observed_github.get("default_branch_head") if github_ok else None
+    prs = _matching_prs(observed_github if github_ok else None, recorded.get("branch"))
+    recorded_is_default = bool(
+        recorded.get("branch") and default_branch and str(recorded["branch"]) == str(default_branch)
+    )
 
-    if observed_local["ok"] and recorded["branch"]:
-        live_branch = observed_local.get("branch")
-        if live_branch and live_branch != recorded["branch"]:
-            drift.append(
-                _drift(
-                    "mismatch",
-                    "branch",
-                    recorded["branch"],
-                    live_branch,
-                    EventSource.LOCAL_GIT,
-                )
+    branch_checks: list[tuple[str, Any, bool | None]] = []
+    if observed_local["ok"] and not observed_local["detached"] and observed_local.get("branch"):
+        branch_checks.append(
+            (
+                EventSource.LOCAL_GIT,
+                observed_local["branch"],
+                str(observed_local["branch"]) == str(recorded.get("branch")),
             )
-    if observed_local["ok"] and recorded["head"]:
-        match = heads_match(recorded["head"], observed_local.get("head"))
-        if match is False:
-            drift.append(
-                _drift(
-                    "mismatch",
-                    "head",
-                    recorded["head"],
-                    observed_local.get("head"),
-                    EventSource.LOCAL_GIT,
-                )
-            )
-    if observed_local["ok"] and recorded["working_tree"]:
-        rec_kind = working_tree_kind(recorded["working_tree"])
-        live_kind = working_tree_kind(observed_local.get("working_tree"))
-        if rec_kind and live_kind and rec_kind != live_kind:
-            drift.append(
-                _drift(
-                    "mismatch",
-                    "working_tree",
-                    recorded["working_tree"],
-                    observed_local.get("working_tree"),
-                    EventSource.LOCAL_GIT,
-                )
-            )
+        )
+    if recorded_is_default and default_branch:
+        branch_checks.append((EventSource.GITHUB, default_branch, True))
+    if prs:
+        branch_checks.append((EventSource.GITHUB, prs[0].get("head_ref"), True))
 
-    if observed_github and observed_github.get("ok"):
-        live_head = observed_local.get("head") if observed_local["ok"] else None
-        live_branch = observed_local.get("branch") if observed_local["ok"] else None
-        default_branch = observed_github.get("default_branch")
-        default_head = observed_github.get("default_branch_head")
-        if (
-            live_branch
-            and default_branch
-            and live_branch == default_branch
-            and live_head
-            and default_head
-            and heads_match(live_head, default_head) is False
-        ):
-            drift.append(
-                _drift(
-                    "mismatch",
-                    "default_branch_head",
-                    live_head,
-                    default_head,
-                    EventSource.GITHUB,
-                )
+    head_checks: list[tuple[str, Any, bool | None]] = []
+    if observed_local["ok"] and observed_local.get("head"):
+        head_checks.append(
+            (
+                EventSource.LOCAL_GIT,
+                observed_local["head"],
+                heads_match(recorded.get("head"), observed_local.get("head")),
             )
-        recorded_branch = recorded.get("branch")
-        for pr in observed_github.get("open_prs") or []:
-            if recorded_branch and pr.get("head_ref") == recorded_branch:
-                if recorded["head"] and pr.get("head") and heads_match(recorded["head"], pr.get("head")) is False:
-                    drift.append(
-                        _drift(
-                            "mismatch",
-                            "pr_head",
-                            recorded["head"],
-                            pr.get("head"),
-                            EventSource.GITHUB,
-                        )
-                    )
-                if live_head and pr.get("head") and heads_match(live_head, pr.get("head")) is False:
-                    drift.append(
-                        _drift(
-                            "mismatch",
-                            "pr_head_vs_local",
-                            live_head,
-                            pr.get("head"),
-                            EventSource.GITHUB,
-                        )
-                    )
+        )
+    if recorded_is_default and default_head:
+        head_checks.append(
+            (
+                EventSource.GITHUB,
+                default_head,
+                heads_match(recorded.get("head"), default_head),
+            )
+        )
+    if prs and prs[0].get("head"):
+        head_checks.append(
+            (
+                EventSource.GITHUB,
+                prs[0].get("head"),
+                heads_match(recorded.get("head"), prs[0].get("head")),
+            )
+        )
 
-    has_record = bool(recorded["branch"] or recorded["head"] or recorded["working_tree"])
-    if drift:
-        status = "drift"
-    elif not has_record:
-        status = "no-record"
-    elif observed_local["ok"] or (observed_github and observed_github.get("ok")):
-        status = "aligned"
-    else:
-        status = "unknown"
+    tree_checks: list[tuple[str, Any, bool | None]] = []
+    rec_kind = working_tree_kind(recorded.get("working_tree"))
+    live_kind = working_tree_kind(observed_local.get("working_tree"))
+    if observed_local["ok"] and rec_kind and live_kind:
+        tree_checks.append(
+            (
+                EventSource.LOCAL_GIT,
+                observed_local.get("working_tree"),
+                rec_kind == live_kind,
+            )
+        )
 
+    comparisons = {
+        "branch": _reduce_checks(recorded.get("branch"), branch_checks),
+        "head": _reduce_checks(recorded.get("head"), head_checks),
+        "working_tree": _reduce_checks(recorded.get("working_tree"), tree_checks),
+    }
+    status = _status_from_comparisons(comparisons)
+    drift = _drift_rows(comparisons)
     return {
         "clank_id": detail["clank_id"],
         "slug": detail["slug"],
         "display_name": detail["display_name"],
         "mission_display": mission["display_id"] if mission else None,
         "status": status,
+        "comparisons": comparisons,
         "recorded": recorded,
         "observed_local": observed_local,
         "observed_github": observed_github,
+        "github_selection": choice,
         "drift": drift,
         "rewrote_history": False,
         "head_short_recorded": short_head(recorded.get("head")),
@@ -313,7 +435,7 @@ def reconcile_fleet(
         )
         for clank in store.list_clanks()
     ]
-    counts = {"aligned": 0, "drift": 0, "no-record": 0, "unknown": 0}
+    counts = {key: 0 for key in RECONCILE_STATUSES}
     for row in rows:
         counts[row["status"]] = counts.get(row["status"], 0) + 1
     return {
