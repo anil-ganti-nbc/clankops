@@ -30,6 +30,19 @@ def connect(path: str | Path, *, clock: Clock | None = None) -> sqlite3.Connecti
     return conn
 
 
+def connect_readonly(path: str | Path) -> sqlite3.Connection:
+    """Open an existing ledger without migrating or writing."""
+    db_path = Path(path)
+    if not db_path.is_file():
+        raise FileNotFoundError(f"database not found: {db_path}")
+    uri = db_path.resolve().as_posix()
+    conn = sqlite3.connect(f"file:{uri}?mode=ro", uri=True, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA query_only = ON;")
+    conn.execute("PRAGMA foreign_keys = ON;")
+    return conn
+
+
 def apply_migrations(conn: sqlite3.Connection, *, clock: Clock | None = None) -> list[int]:
     clock = clock or SystemClock()
     conn.execute(

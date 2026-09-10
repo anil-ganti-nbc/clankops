@@ -700,5 +700,16 @@ def write_census(census: dict[str, Any], path: str | Path) -> Path:
     return out
 
 
+def default_census_path() -> Path:
+    """Prefer a census file in cwd, else the copy shipped with this checkout."""
+    env = os.environ.get("CLANKOPS_CENSUS")
+    if env:
+        return Path(env)
+    cwd = Path("data/bootstrap/clank_census.json")
+    if cwd.is_file():
+        return cwd
+    return Path(__file__).resolve().parents[2] / "data" / "bootstrap" / "clank_census.json"
+
+
 def load_census(path: str | Path) -> dict[str, Any]:
     return json.loads(Path(path).read_text(encoding="utf-8"))

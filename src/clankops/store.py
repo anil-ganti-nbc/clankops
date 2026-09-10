@@ -36,6 +36,15 @@ from clankops.projections import (
 )
 
 
+def _usable_census_path(path: str | None) -> str | None:
+    if not path:
+        return None
+    cleaned = str(path).strip()
+    if not cleaned or cleaned.lower() in {"(github-only)", "-", "unknown", "none"}:
+        return None
+    return cleaned
+
+
 def _slugify(value: str) -> str:
     cleaned = []
     prev_dash = False
@@ -438,6 +447,22 @@ class Store:
             "SELECT * FROM clanks ORDER BY slug COLLATE NOCASE"
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def fleet_overview(self) -> list[dict[str, Any]]:
+        """Read-model snapshot for the Terminal. Does not mutate."""
+        rows: list[dict[str, Any]] = []
+        for clank in self.list_clanks():
+            mission = self.active_or_unfinished_mission(clank["clank_id"])
+            rows.append(
+                {
+                    **clank,
+                    "local_path": self.canonical_local_path(clank["clank_id"]),
+                    "mission_display": mission["display_id"] if mission else None,
+                    "mission_state": mission["state"] if mission else None,
+                    "mission_objective": mission["objective"] if mission else None,
+                }
+            )
+        return rows
 
     def clank_detail(self, token: str) -> dict[str, Any]:
         clank = self.resolve_clank(token)
@@ -1168,6 +1193,65 @@ class Store:
         self.commit()
         return stats
 
+    def adopt_verified_census(
+        self,
+        census: dict[str, Any],
+        *,
+        actor: str | None = None,
+        source: str | EventSource | None = None,
+    ) -> dict[str, int]:
+        """Register VERIFIED census Clanks; attach duplicate checkouts as extra refs.
+
+        Does not invent a second identity for SUPPORT_COMPONENT copies of the
+        same remote. Adjacent products stay named identities; they are not
+        merged into ClankOps.
+        """
+        actor = actor or self.default_actor
+        source = source or EventSource.RECONSTRUCTED
+        verified: list[dict[str, Any]] = []
+        for cand in census.get("candidates") or []:
+            if cand.get("classification") != CensusClassification.VERIFIED:
+                continue
+            copy = dict(cand)
+            copy["local_path"] = _usable_census_path(cand.get("local_path"))
+            verified.append(copy)
+        stats = self.import_census(
+            {**census, "candidates": verified},
+            actor=actor,
+            source=source,
+        )
+        extra_refs = 0
+        for cand in census.get("candidates") or []:
+            if cand.get("classification") != CensusClassification.SUPPORT_COMPONENT:
+                continue
+            remote = cand.get("canonical_remote") or cand.get("remote")
+            path = _usable_census_path(cand.get("local_path"))
+            if not remote or not path:
+                continue
+            found = self.find_clank_by_remote(remote)
+            if not found:
+                continue
+            detail = self.clank_detail(found["clank_id"])
+            existing = {
+                r["ref_value"]
+                for r in detail.get("refs") or []
+                if r["ref_kind"] == "local_path"
+            }
+            if path in existing:
+                continue
+            self.update_ref(
+                found["clank_id"],
+                "local_path",
+                path,
+                canonical=False,
+                actor=actor,
+                source=source,
+            )
+            extra_refs += 1
+        stats["extra_duplicate_refs"] = extra_refs
+        stats["verified_candidates"] = len(verified)
+        return stats
+
     # --- brief / history ---
 
     def latest_checkpoint(self, clank_id: str, mission_id: str | None = None) -> dict[str, Any] | None:
@@ -1487,4 +1571,21 @@ def open_store(
         default_actor=actor,
         default_source=source,
         default_session_id=session_id,
+    )
+
+
+def open_readonly_store(path: str | Path, *, clock: Clock | None = None) -> Store:
+    from clankops.db import connect_readonly
+    from clankops.errors import ValidationError
+
+    try:
+        conn = connect_readonly(path)
+    except FileNotFoundError as exc:
+        raise ValidationError(str(exc)) from exc
+    return Store(
+        conn=conn,
+        clock=clock or SystemClock(),
+        default_actor="terminal",
+        default_source=EventSource.SYSTEM,
+        default_session_id=None,
     )

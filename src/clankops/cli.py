@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from clankops.brief import format_brief, format_history
-from clankops.census import load_census, run_census, write_census
+from clankops.census import default_census_path, load_census, run_census, write_census
 from clankops.db import current_schema_version
 from clankops.context import (
     RECOVERY_HINT,
@@ -25,7 +25,7 @@ from clankops.context import (
 from clankops.enums import EventSource, FeatureState, MissionState
 from clankops.errors import ClankOpsError, NotFoundError, ValidationError
 from clankops.gitinspect import inspect_git
-from clankops.store import Store, open_store
+from clankops.store import Store, open_readonly_store, open_store
 
 DEFAULT_DB = Path(os.environ.get("CLANKOPS_DB") or (Path.home() / ".clankops" / "clankops.db"))
 USER_ACTORS = frozenset({"user", "operator"})
@@ -719,10 +719,151 @@ def cmd_census_import_file(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fleet_adopt_verified(args: argparse.Namespace) -> int:
+    census = load_census(args.file)
+    store = _store(args)
+    stats = store.adopt_verified_census(census, actor=args.actor, source=EventSource.RECONSTRUCTED)
+    _print(
+        f"adopted verified fleet {stats}",
+        as_json=args.json,
+        payload=stats,
+    )
+    store.conn.close()
+    return 0
+
+
+def cmd_coverage(args: argparse.Namespace) -> int:
+    from clankops.readmodel import coverage_report
+
+    census = load_census(args.file)
+    store = open_readonly_store(args.db)
+    try:
+        report = coverage_report(store, census)
+    finally:
+        store.conn.close()
+    if args.json:
+        _print("", as_json=True, payload=report)
+        return 0
+    unresolved = report.get("verified_unresolved") or []
+    unresolved_text = ", ".join(str(item.get("slug") or "?") for item in unresolved) or "none"
+    lines = [
+        f"census candidates: {report['census_candidates']}",
+        f"registered Clanks: {report['registered_clanks']}",
+        f"VERIFIED candidates: {report['verified_candidates']}",
+        f"VERIFIED registered: {report['verified_registered']}",
+        f"VERIFIED unresolved: {report['verified_unresolved_count']} ({unresolved_text})",
+        f"PROBABLE: {report['probable']}",
+        f"UNKNOWN: {report['unknown']}",
+        f"SUPPORT_COMPONENT: {report['support_component']}",
+        f"NOT_A_CLANK: {report['not_a_clank']}",
+        f"NEEDS_RECONSTRUCTION: {report['needs_reconstruction']}",
+        f"duplicate identity groups: {report['duplicate_identity_groups']}",
+        report["verified_denominator_note"],
+    ]
+    for group in report.get("duplicates") or []:
+        lines.append(
+            f"  duplicate {group.get('identity')}: {group.get('path_count')} paths"
+        )
+    _print("\n".join(lines), as_json=False)
+    return 0
+
+
+def _format_session_row(row: dict[str, Any]) -> str:
+    anomaly = f" ANOMALY={row['anomaly']}" if row.get("anomaly") else ""
+    stale = " [stale]" if row.get("stale") else ""
+    return (
+        f"{row['session_id']} actor={row.get('actor') or 'unknown'} "
+        f"clank={row.get('clank_slug') or 'unknown'} "
+        f"mission={row.get('mission_display') or 'unknown'} "
+        f"[{row.get('mission_state') or 'unknown'}] "
+        f"started={row.get('started_utc') or 'unknown'} age={row.get('age') or 'unknown'} "
+        f"checkpoint={row.get('latest_checkpoint_utc') or 'unknown'} "
+        f"branch={row.get('branch') or 'unknown'} "
+        f"HEAD={row.get('head_short') or row.get('head') or 'unknown'} "
+        f"next={row.get('next_action') or 'unknown'}"
+        f"{stale}{anomaly}"
+    )
+
+
+def cmd_sessions_open(args: argparse.Namespace) -> int:
+    from clankops.readmodel import open_sessions
+
+    store = open_readonly_store(args.db)
+    try:
+        rows = open_sessions(store)
+    finally:
+        store.conn.close()
+    if args.json:
+        _print("", as_json=True, payload=rows)
+        return 0
+    if not rows:
+        _print("No open Sessions.", as_json=False)
+        return 0
+    _print("\n".join(_format_session_row(row) for row in rows), as_json=False)
+    return 0
+
+
+def cmd_sessions_stale(args: argparse.Namespace) -> int:
+    from clankops.readmodel import stale_sessions
+    from clankops.timefmt import parse_duration
+
+    older = parse_duration(args.older_than)
+    store = open_readonly_store(args.db)
+    try:
+        rows = stale_sessions(store, older_than=older)
+    finally:
+        store.conn.close()
+    if args.json:
+        _print("", as_json=True, payload=rows)
+        return 0
+    if not rows:
+        _print(f"No stale Sessions older than {args.older_than}.", as_json=False)
+        return 0
+    _print("\n".join(_format_session_row(row) for row in rows), as_json=False)
+    return 0
+
+
+def cmd_terminal(args: argparse.Namespace) -> int:
+    from clankops.terminal import DEFAULT_HOST, serve
+    from clankops.timefmt import parse_duration
+
+    host = args.host or DEFAULT_HOST
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        raise ValidationError("Terminal alpha binds localhost only")
+    census_path = Path(args.census) if args.census else default_census_path()
+    httpd = serve(
+        db_path=args.db,
+        host=host,
+        port=args.port,
+        census_path=census_path,
+        stale_after=parse_duration(args.stale_after),
+    )
+    bound = httpd.server_address
+    _print(
+        f"ClankOps Terminal (read-only) http://{bound[0]}:{bound[1]}/",
+        as_json=args.json,
+        payload={
+            "host": bound[0],
+            "port": bound[1],
+            "read_only": True,
+            "connection": "per-request",
+            "stale_after": args.stale_after,
+            "census": str(census_path),
+        },
+    )
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.server_close()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="clankctl",
-        description="ClankOps development ledger (Foundation 1)",
+        description="ClankOps development ledger (Foundation 2)",
     )
     parser.add_argument(
         "--db",
@@ -757,6 +898,43 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("census-import", help="import an existing census JSON artefact")
     p.add_argument("file")
     p.set_defaults(func=cmd_census_import_file)
+
+    p = sub.add_parser(
+        "fleet-adopt-verified",
+        help="register remaining VERIFIED census Clanks; extra checkouts become refs",
+    )
+    p.add_argument(
+        "--file",
+        default=str(Path("data/bootstrap/clank_census.json")),
+        help="census JSON (default: data/bootstrap/clank_census.json)",
+    )
+    p.set_defaults(func=cmd_fleet_adopt_verified)
+
+    p = sub.add_parser(
+        "coverage",
+        help="read-only VERIFIED census coverage (does not promote candidates)",
+    )
+    p.add_argument(
+        "--file",
+        default=str(Path("data/bootstrap/clank_census.json")),
+        help="census JSON (default: data/bootstrap/clank_census.json)",
+    )
+    p.set_defaults(func=cmd_coverage)
+
+    p = sub.add_parser("terminal", help="read-only localhost Clank Terminal (alpha)")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument(
+        "--census",
+        default=None,
+        help="census JSON for VERIFIED coverage chips (default: data/bootstrap/clank_census.json)",
+    )
+    p.add_argument(
+        "--stale-after",
+        default="24h",
+        help="open Session age treated as stale on the fleet home (default: 24h)",
+    )
+    p.set_defaults(func=cmd_terminal)
 
     p = sub.add_parser("list", help="list registered Clanks")
     p.set_defaults(func=cmd_list)
@@ -914,6 +1092,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = ssub.add_parser("list")
     p.add_argument("mission")
     p.set_defaults(func=cmd_session)
+
+    sessions = sub.add_parser("sessions", help="read-only Session observability")
+    sess_sub = sessions.add_subparsers(dest="sessions_command", required=True)
+    p = sess_sub.add_parser("open", help="Sessions with ended_utc IS NULL")
+    p.set_defaults(func=cmd_sessions_open)
+    p = sess_sub.add_parser("stale", help="open Sessions older than a threshold (does not close them)")
+    p.add_argument("--older-than", default="24h", help="age threshold (default: 24h)")
+    p.set_defaults(func=cmd_sessions_stale)
 
     p = sub.add_parser("artifact", help="attach an external artefact")
     asub = p.add_subparsers(dest="artifact_action", required=True)
