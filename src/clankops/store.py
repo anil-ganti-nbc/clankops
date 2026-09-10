@@ -73,17 +73,20 @@ class Store:
         bind_session: bool = True,
     ) -> Event:
         actor = actor or self.default_actor
-        if bind_session and session_id is None:
-            session_id = self.resolve_active_session(
+        source_val = source or self.default_source
+        if bind_session:
+            session_id = self._session_for_mutation(
+                session_id=session_id,
                 mission_id=mission_id,
-                actor=actor,
                 clank_id=clank_id,
+                actor=actor,
+                source=source_val,
             )
         event = append_event(
             self.conn,
             event_type=event_type,
             actor=actor,
-            source=source or self.default_source,
+            source=source_val,
             payload=payload,
             provenance=provenance or {"recorder": "clankops.store"},
             clank_id=clank_id,
@@ -204,6 +207,64 @@ class Store:
             raise NotFoundError(f"session not found: {token}")
         return dict(row)
 
+    def validate_session_for_mutation(
+        self,
+        token: str,
+        *,
+        mission_id: str | None = None,
+        clank_id: str | None = None,
+        actor: str | None = None,
+    ) -> dict[str, Any]:
+        """Prove a Session is valid provenance for this mutation. Never silent."""
+        try:
+            row = self.resolve_session(token)
+        except NotFoundError as exc:
+            raise ValidationError(str(exc)) from exc
+        if row["ended_utc"]:
+            raise ValidationError(f"session is closed: {row['session_id']}")
+        if mission_id and row["mission_id"] != mission_id:
+            raise ValidationError(
+                f"session {row['session_id']} belongs to another mission"
+            )
+        if clank_id and row["clank_id"] != clank_id:
+            raise ValidationError(
+                f"session {row['session_id']} belongs to another clank"
+            )
+        actor = actor or self.default_actor
+        if actor and row["actor"] != actor:
+            raise ValidationError(
+                f"session {row['session_id']} is owned by actor {row['actor']}, not {actor}"
+            )
+        return row
+
+    def _session_for_mutation(
+        self,
+        *,
+        session_id: str | None,
+        mission_id: str | None,
+        clank_id: str | None,
+        actor: str,
+        source: str | EventSource | None,
+    ) -> str | None:
+        """Explicit/configured Session is required-valid; otherwise unique fallback."""
+        source_val = str(source or "")
+        supplied = session_id
+        if not supplied and source_val != EventSource.RECONSTRUCTED:
+            supplied = self.default_session_id
+        if supplied:
+            row = self.validate_session_for_mutation(
+                supplied,
+                mission_id=mission_id,
+                clank_id=clank_id,
+                actor=actor,
+            )
+            return row["session_id"]
+        return self.resolve_active_session(
+            mission_id=mission_id,
+            actor=actor,
+            clank_id=clank_id,
+        )
+
     def resolve_active_session(
         self,
         *,
@@ -212,22 +273,18 @@ class Store:
         clank_id: str | None = None,
         session_id: str | None = None,
     ) -> str | None:
-        """Bind a session without inventing one.
+        """Fallback only: unique open Session for this actor on this Mission.
 
-        Priority: explicit id, store default, unique open session for this
-        actor on this mission. Ambiguous or missing stays unknown.
+        Does not apply default_session_id. Ambiguous or missing stays unknown.
+        ``session_id`` is accepted for callers that already validated.
         """
-        candidate = session_id or self.default_session_id
-        if candidate:
-            row = self.conn.execute(
-                "SELECT * FROM sessions WHERE session_id = ?", (candidate,)
-            ).fetchone()
-            if row is None:
-                return None
-            if row["ended_utc"]:
-                return None
-            if mission_id and row["mission_id"] != mission_id:
-                return None
+        if session_id:
+            row = self.validate_session_for_mutation(
+                session_id,
+                mission_id=mission_id,
+                clank_id=clank_id,
+                actor=actor,
+            )
             return row["session_id"]
         if not mission_id:
             return None
@@ -315,6 +372,7 @@ class Store:
             source=source,
             clank_id=clank_id,
             provenance=provenance,
+            bind_session=False,
         )
         self.commit()
         return self.resolve_clank(clank_id)
@@ -334,6 +392,7 @@ class Store:
             {"alias": alias},
             actor=actor,
             clank_id=row["clank_id"],
+            bind_session=False,
         )
         self.commit()
         return event
@@ -356,6 +415,7 @@ class Store:
             actor=actor,
             source=source,
             clank_id=row["clank_id"],
+            bind_session=False,
         )
         self.commit()
         return event
@@ -367,6 +427,7 @@ class Store:
             {"lifecycle": lifecycle, "from_lifecycle": row["lifecycle"]},
             actor=actor,
             clank_id=row["clank_id"],
+            bind_session=False,
         )
         self.commit()
         return event
@@ -912,6 +973,7 @@ class Store:
             actor=actor,
             source=source,
             clank_id=src["clank_id"],
+            bind_session=False,
         )
         self.commit()
         return dict(
@@ -988,6 +1050,7 @@ class Store:
                 "reconstructed": source == EventSource.RECONSTRUCTED
                 or str(source) == EventSource.RECONSTRUCTED,
             },
+            bind_session=False,
         )
         self.commit()
         return {"candidate_id": candidate_id, "event_id": event.event_id}

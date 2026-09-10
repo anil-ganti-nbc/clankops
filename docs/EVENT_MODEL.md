@@ -101,7 +101,7 @@ A Session is one actor's continuous period of active work on one Mission.
 - `clankctl session start <mission>` opens another Session for a different actor. A Mission may have multiple open Sessions.
 - A Session ends on explicit `session end`, or when the Mission leaves active work (`PAUSED`, `BLOCKED`, `COMPLETED`, `ABANDONED`, `SUPERSEDED`). All open Sessions on that Mission close. Historical Sessions remain.
 - Duration is `ended_utc - started_utc` when both are known.
-- Mutations during a Session (checkpoints, tasks, features, decisions, blockers, artefacts) carry `session_id` when it can be resolved. Reconstructed events may have none. Attribution is never invented.
+- Mutations during a Session (checkpoints, tasks, features, decisions, blockers, artefacts) carry `session_id` when it can be resolved. An attributed Session must exist, still be open, and match the event's Mission (when present), Clank (when present), and actor. An explicit `--session` or `CLANKOPS_SESSION_ID` that fails those checks is a validation error; ClankOps does not drop it and write an unattributed event. If none is supplied and exactly one open Session exists for this actor on this Mission, that Session is bound. Otherwise attribution stays unknown. Reconstructed events may have none. System lifecycle operations (for example closing another actor's Session when a Mission leaves ACTIVE) use an explicit `bind_session=False` path rather than weakening normal validation.
 
 ## Projections
 

@@ -16,7 +16,7 @@ Foundation 0 provides the primitives and this contract. It does **not** patch ev
    2. `CLANKOPS_SESSION_ID` in the environment (preferred for launchers)
    3. fallback: if this `--actor` has exactly one open Session on the Mission, ClankOps binds it
 
-   If two agents are working the same Mission, each must pass `--session` or its own `CLANKOPS_SESSION_ID`. Do not assume a Mission has a single active Session. If attribution is unknown (reconstructed history), omit the Session; do not invent one.
+   If two agents are working the same Mission, each must pass `--session` or its own `CLANKOPS_SESSION_ID`. Do not assume a Mission has a single active Session. If attribution is unknown (reconstructed history), omit the Session; do not invent one. A supplied Session that belongs to another Mission, Clank, or actor, is closed, or does not exist, is rejected — ClankOps will not silently record the mutation without a Session.
 
    End work with `clankctl mission pause|block|complete|abandon` (closes all open Sessions on that Mission) or `clankctl session end <session>` for a single actor.
 4. **Record meaningful checkpoints**, not spam. At minimum: when stopping, when switching branches, after a mergeable unit of work, after tests. Include completed / current / next / outstanding / tests / branch / HEAD / working-tree. Use `--capture-git` when a local repo exists.

@@ -1,7 +1,11 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from clankops.clock import TickingClock
+from clankops.errors import ValidationError
 from clankops.events import copy_events, list_events
+from clankops.ids import new_id
 from clankops.projections import dump_projection_state, rebuild_projections
 from clankops.store import open_store
 
@@ -127,8 +131,18 @@ def test_concurrent_sessions_on_one_mission(store) -> None:
     open_ids = _open(store)
     assert set(open_ids) == {cursor_sid, grok_sid}
 
-    store.record_checkpoint(m["display_id"], current_work="cursor work", session_id=cursor_sid)
-    store.record_checkpoint(m["display_id"], current_work="grok work", session_id=grok_sid)
+    store.record_checkpoint(
+        m["display_id"],
+        current_work="cursor work",
+        session_id=cursor_sid,
+        actor="cursor",
+    )
+    store.record_checkpoint(
+        m["display_id"],
+        current_work="grok work",
+        session_id=grok_sid,
+        actor="grok",
+    )
     cps = list_events(store.conn, mission_id=m["mission_id"])
     cursor_cp = [e for e in cps if e.event_type == "CHECKPOINT_RECORDED" and e.session_id == cursor_sid]
     grok_cp = [e for e in cps if e.event_type == "CHECKPOINT_RECORDED" and e.session_id == grok_sid]
@@ -169,3 +183,164 @@ def test_reconstructed_events_may_have_no_session(store) -> None:
     ev = list_events(store.conn)[0]
     assert ev.session_id is None
     assert ev.source == "RECONSTRUCTED"
+
+
+def test_explicit_session_from_another_mission_is_rejected(store) -> None:
+    store.register_clank("oem-radar")
+    a = store.start_mission("oem-radar", "alpha")
+    b = store.start_mission("oem-radar", "beta")
+    with pytest.raises(ValidationError, match="another mission"):
+        store.record_checkpoint(
+            a["display_id"],
+            current_work="wrong mission",
+            session_id=b["session_id"],
+        )
+    events = [e for e in list_events(store.conn) if e.event_type == "CHECKPOINT_RECORDED"]
+    assert events == []
+
+
+def test_explicit_session_from_another_clank_is_rejected(store) -> None:
+    store.register_clank("oem-radar")
+    store.register_clank("watch-clank")
+    radar = store.start_mission("oem-radar", "radar work")
+    with pytest.raises(ValidationError, match="another clank"):
+        store.add_feature("watch-clank", "unrelated", session_id=radar["session_id"])
+    events = [e for e in list_events(store.conn) if e.event_type == "FEATURE_ADDED"]
+    assert events == []
+
+
+def test_explicit_session_owned_by_another_actor_is_rejected(store) -> None:
+    store.register_clank("oem-radar")
+    m = store.start_mission("oem-radar", "shared", actor="cursor")
+    with pytest.raises(ValidationError, match="owned by actor cursor"):
+        store.record_checkpoint(
+            m["display_id"],
+            current_work="tester pretending",
+            session_id=m["session_id"],
+        )
+    events = [e for e in list_events(store.conn) if e.event_type == "CHECKPOINT_RECORDED"]
+    assert events == []
+
+
+def test_explicit_closed_session_is_rejected(store) -> None:
+    store.register_clank("oem-radar")
+    m = store.start_mission("oem-radar", "work")
+    sid = m["session_id"]
+    store.pause_mission(m["display_id"])
+    with pytest.raises(ValidationError, match="session is closed"):
+        store.record_checkpoint(m["display_id"], current_work="after close", session_id=sid)
+    events = [e for e in list_events(store.conn) if e.event_type == "CHECKPOINT_RECORDED"]
+    assert events == []
+
+
+def test_nonexistent_explicit_session_is_rejected(store) -> None:
+    store.register_clank("oem-radar")
+    m = store.start_mission("oem-radar", "work")
+    missing = new_id()
+    with pytest.raises(ValidationError, match="session not found"):
+        store.record_checkpoint(
+            m["display_id"],
+            current_work="ghost",
+            session_id=missing,
+        )
+    events = [e for e in list_events(store.conn) if e.event_type == "CHECKPOINT_RECORDED"]
+    assert events == []
+
+
+def test_configured_session_wrong_mission_is_rejected(store) -> None:
+    store.register_clank("oem-radar")
+    a = store.start_mission("oem-radar", "alpha")
+    b = store.start_mission("oem-radar", "beta")
+    store.default_session_id = b["session_id"]
+    with pytest.raises(ValidationError, match="another mission"):
+        store.record_checkpoint(a["display_id"], current_work="env mismatch")
+    events = [e for e in list_events(store.conn) if e.event_type == "CHECKPOINT_RECORDED"]
+    assert events == []
+
+
+def test_configured_session_wrong_clank_for_feature_is_rejected(store) -> None:
+    store.register_clank("oem-radar")
+    store.register_clank("watch-clank")
+    radar = store.start_mission("oem-radar", "radar work")
+    store.default_session_id = radar["session_id"]
+    with pytest.raises(ValidationError, match="another clank"):
+        store.add_feature("watch-clank", "unrelated")
+    events = [e for e in list_events(store.conn) if e.event_type == "FEATURE_ADDED"]
+    assert events == []
+
+
+def test_valid_explicit_session_is_attributed(store) -> None:
+    store.register_clank("oem-radar")
+    m = store.start_mission("oem-radar", "work")
+    sid = m["session_id"]
+    store.default_session_id = None
+    cp = store.record_checkpoint(
+        m["display_id"],
+        current_work="explicit",
+        session_id=sid,
+    )
+    assert cp["session_id"] == sid
+    ev = next(e for e in list_events(store.conn) if e.event_type == "CHECKPOINT_RECORDED")
+    assert ev.session_id == sid
+
+
+def test_valid_configured_session_is_attributed(store) -> None:
+    store.register_clank("oem-radar")
+    m = store.start_mission("oem-radar", "work")
+    sid = m["session_id"]
+    store.default_session_id = sid
+    cp = store.record_checkpoint(m["display_id"], current_work="from env")
+    assert cp["session_id"] == sid
+
+
+def test_unique_actor_mission_fallback_binds_session(store) -> None:
+    store.register_clank("oem-radar")
+    m = store.start_mission("oem-radar", "work")
+    sid = m["session_id"]
+    store.default_session_id = None
+    store.start_session(m["display_id"], actor="grok")
+    cp = store.record_checkpoint(m["display_id"], current_work="fallback")
+    assert cp["session_id"] == sid
+    ev = next(e for e in list_events(store.conn) if e.event_type == "CHECKPOINT_RECORDED")
+    assert ev.session_id == sid
+    assert ev.actor == "tester"
+
+
+def test_ambiguous_sessions_are_not_guessed(store) -> None:
+    store.register_clank("oem-radar")
+    m = store.start_mission("oem-radar", "work")
+    store.start_session(m["display_id"])
+    store.default_session_id = None
+    cp = store.record_checkpoint(m["display_id"], current_work="ambiguous")
+    assert cp["session_id"] is None
+    ev = next(e for e in list_events(store.conn) if e.event_type == "CHECKPOINT_RECORDED")
+    assert ev.session_id is None
+
+
+def test_reconstructed_stays_unattributed_even_with_configured_session(store) -> None:
+    store.register_clank("oem-radar")
+    m = store.start_mission("oem-radar", "work")
+    store.default_session_id = m["session_id"]
+    store.register_clank("watch-clank", source="RECONSTRUCTED", actor="system")
+    store.record_census_candidate(
+        {"slug": "mystery", "classification": "UNKNOWN"},
+        source="RECONSTRUCTED",
+        actor="system",
+    )
+    events = list_events(store.conn)
+    registered = [e for e in events if e.event_type == "CLANK_REGISTERED" and e.payload.get("slug") == "watch-clank"]
+    census = [e for e in events if e.event_type == "CENSUS_CANDIDATE_RECORDED"]
+    assert registered[-1].session_id is None
+    assert census[-1].session_id is None
+
+
+def test_lifecycle_can_close_another_actors_session(store) -> None:
+    store.register_clank("oem-radar")
+    m = store.start_mission("oem-radar", "work", actor="cursor")
+    sid = m["session_id"]
+    store.pause_mission(m["display_id"], actor="grok")
+    row = store.resolve_session(sid)
+    assert row["ended_utc"] is not None
+    ended = next(e for e in list_events(store.conn) if e.event_type == "SESSION_ENDED")
+    assert ended.session_id == sid
+    assert ended.actor == "grok"

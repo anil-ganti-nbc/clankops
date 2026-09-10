@@ -103,3 +103,19 @@ def test_cli_rebuild(tmp_path: Path) -> None:
     conn = sqlite3.connect(db)
     assert conn.execute("SELECT COUNT(*) FROM clanks").fetchone()[0] == 1
     conn.close()
+
+
+def test_cli_rejects_env_session_for_wrong_mission(tmp_path: Path, monkeypatch, capsys) -> None:
+    db = _db(tmp_path)
+    assert main(["--db", db, "register", "oem-radar"]) == 0
+    assert main(["--db", db, "mission", "start", "oem-radar", "alpha"]) == 0
+    assert main(["--db", db, "mission", "start", "oem-radar", "beta"]) == 0
+    out = capsys.readouterr().out
+    beta_session = None
+    for line in out.splitlines():
+        if "COPS-000002" in line and "session=" in line:
+            beta_session = line.split("session=", 1)[1].strip()
+    assert beta_session
+    monkeypatch.setenv("CLANKOPS_SESSION_ID", beta_session)
+    assert main(["--db", db, "task", "add", "COPS-000001", "write adapters"]) == 2
+    assert "another mission" in capsys.readouterr().err
