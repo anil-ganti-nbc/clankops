@@ -11,6 +11,7 @@ from clankops.census import (
     detect_duplicates,
     inspect_path,
     load_census,
+    path_leaf,
     run_census,
     write_census,
 )
@@ -109,9 +110,24 @@ def test_duplicate_detection() -> None:
     assert len(dupes[0]["paths"]) == 2
 
 
+def test_path_leaf_is_host_independent() -> None:
+    assert path_leaf(r"C:\Users\anil\Clanks\_Launchers") == "_Launchers"
+    assert path_leaf("C:/Users/anil/Clanks/_Launchers") == "_Launchers"
+    assert path_leaf("/mnt/c/Users/anil/Clanks/_Launchers") == "_Launchers"
+    assert path_leaf(r"C:\x\ml-lab") == "ml-lab"
+
+
 def test_classify_support_and_not_a_clank() -> None:
     cls, evidence, _ = classify_candidate(
         {"slug": "_launchers", "local_path": r"C:\Users\anil\Clanks\_Launchers", "discovery_group": "clanks_root"}
+    )
+    assert cls == "SUPPORT_COMPONENT"
+    cls, _, _ = classify_candidate(
+        {
+            "slug": "_launchers",
+            "local_path": "/mnt/c/Users/anil/Clanks/_Launchers",
+            "discovery_group": "clanks_root",
+        }
     )
     assert cls == "SUPPORT_COMPONENT"
     cls, _, _ = classify_candidate({"slug": "ml-lab", "local_path": r"C:\x\ml-lab"})

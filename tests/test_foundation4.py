@@ -19,12 +19,74 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_empty_checks_are_none_never_success() -> None:
-    assert rollup_ci_state([], "success", 0) == "none"
-    assert rollup_ci_state([], "pending", 0) == "none"
-    assert rollup_ci_state([], None, None) == "none"
-    assert rollup_ci_state([], "success", 2) == "success"
-    assert rollup_ci_state([], "pending", 1) == "pending"
-    assert rollup_ci_state([], "failure", 1) == "failure"
+    assert rollup_ci_state([], contexts=[]) == "none"
+    assert (
+        rollup_ci_state(
+            [],
+            contexts=[],
+            checks_observed=True,
+            statuses_observed=True,
+        )
+        == "none"
+    )
+    assert rollup_ci_state([], contexts=[{"state": "success"}, {"state": "success"}]) == "success"
+    assert rollup_ci_state([], contexts=[{"state": "pending"}]) == "pending"
+    assert rollup_ci_state([], contexts=[{"state": "failure"}]) == "failure"
+
+
+def test_unavailable_status_evidence_is_unknown_not_none() -> None:
+    assert (
+        rollup_ci_state(
+            [],
+            contexts=[],
+            checks_observed=True,
+            statuses_observed=False,
+        )
+        == "unknown"
+    )
+    assert (
+        rollup_ci_state(
+            [],
+            contexts=[],
+            checks_observed=False,
+            statuses_observed=True,
+        )
+        == "unknown"
+    )
+    assert (
+        rollup_ci_state(
+            [],
+            contexts=[],
+            checks_observed=False,
+            statuses_observed=False,
+        )
+        == "unknown"
+    )
+
+
+def test_unified_check_run_and_status_context_rollup() -> None:
+    success_run = {"status": "completed", "conclusion": "success"}
+    assert (
+        rollup_ci_state(
+            [success_run],
+            contexts=[{"context": "legacy", "state": "failure"}],
+        )
+        == "failure"
+    )
+    assert (
+        rollup_ci_state(
+            [success_run],
+            contexts=[{"context": "legacy", "state": "pending"}],
+        )
+        == "pending"
+    )
+    assert (
+        rollup_ci_state(
+            [success_run],
+            contexts=[{"context": "legacy", "state": "success"}],
+        )
+        == "success"
+    )
 
 
 def test_check_run_failure_beats_pending_and_success() -> None:
@@ -33,7 +95,23 @@ def test_check_run_failure_beats_pending_and_success() -> None:
         {"status": "in_progress", "conclusion": None},
         {"status": "completed", "conclusion": "failure"},
     ]
-    assert rollup_ci_state(runs, "success", 3) == "failure"
+    assert rollup_ci_state(runs, contexts=[{"state": "success"}]) == "failure"
+
+
+def test_check_run_completeness_before_success() -> None:
+    incomplete = {"status": "in_progress", "conclusion": "success"}
+    missing_status = {"status": None, "conclusion": "success"}
+    completed_no_conclusion = {"status": "completed", "conclusion": None}
+    assert rollup_ci_state([incomplete], contexts=[]) == "pending"
+    assert rollup_ci_state([missing_status], contexts=[]) == "pending"
+    assert rollup_ci_state([completed_no_conclusion], contexts=[]) == "unknown"
+    assert (
+        rollup_ci_state(
+            [{"status": "completed", "conclusion": "success"}],
+            contexts=[],
+        )
+        == "success"
+    )
 
 
 def test_all_successful_check_runs_are_success() -> None:
@@ -41,7 +119,7 @@ def test_all_successful_check_runs_are_success() -> None:
         {"status": "completed", "conclusion": "success"},
         {"status": "completed", "conclusion": "success"},
     ]
-    assert rollup_ci_state(runs, "pending", 0) == "success"
+    assert rollup_ci_state(runs, contexts=[]) == "success"
 
 
 def test_inspect_commit_status_is_get_only(monkeypatch) -> None:
@@ -52,17 +130,34 @@ def test_inspect_commit_status_is_get_only(monkeypatch) -> None:
         if args[:1] == ["api"] and str(args[1]).endswith("/check-runs"):
             return 0, json.dumps({"check_runs": []}), ""
         if args[:1] == ["api"] and str(args[1]).endswith("/status"):
-            return 0, json.dumps({"state": "pending", "total_count": 0}), ""
+            return 0, json.dumps({"state": "pending", "total_count": 0, "statuses": []}), ""
         return 1, "", "unexpected"
 
     monkeypatch.setattr("clankops.githubinspect.run_gh", fake_gh)
     result = inspect_commit_status("anil-ganti-nbc/clankops", HEAD)
     assert result["ok"] is True
     assert result["state"] == "none"
+    assert result["checks_observed"] is True
+    assert result["statuses_observed"] is True
     assert result["combined_state"] == "pending"
     assert result["combined_total"] == 0
     assert all(args[0] == "api" for args in calls)
     assert not any("pr" in args for args in calls)
+
+
+def test_inspect_commit_status_unavailable_status_is_not_none(monkeypatch) -> None:
+    def fake_gh(args):
+        if str(args[1]).endswith("/check-runs"):
+            return 0, json.dumps({"check_runs": []}), ""
+        return 1, "", "gh api commit status failed (1)"
+
+    monkeypatch.setattr("clankops.githubinspect.run_gh", fake_gh)
+    result = inspect_commit_status("anil-ganti-nbc/clankops", HEAD)
+    assert result["ok"] is True
+    assert result["checks_observed"] is True
+    assert result["statuses_observed"] is False
+    assert result["state"] == "unknown"
+    assert result["state"] != "none"
 
 
 def test_injected_remote_does_not_call_live_checks(tmp_path: Path, monkeypatch) -> None:
@@ -212,7 +307,8 @@ def test_terminal_shows_ci_checks_without_claiming_git_match(tmp_path: Path) -> 
     html = _dossier_html(payload)
     assert "CI checks" in html
     assert "no check-runs" in html
-    assert "Empty CI checks are none, never success" in html
+    assert "no status contexts" in html
+    assert "Empty CI is none only when check-runs and status contexts were both observed empty" in html
     assert "matches recorded claims" not in html
     store.conn.close()
 

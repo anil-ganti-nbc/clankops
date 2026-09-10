@@ -7,7 +7,7 @@ import os
 import re
 import subprocess
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Iterable
 
 from clankops.gitinspect import inspect_git
@@ -128,8 +128,23 @@ def _github_identity(url: str | None) -> str | None:
     return f"{m.group('owner')}/{m.group('repo')}".lower()
 
 
+def path_leaf(raw: str | os.PathLike[str] | None) -> str:
+    """Basename of a stored path string, independent of the host OS.
+
+    Windows census paths (`C:\\...\\_Launchers`) must still yield `_Launchers`
+    when classified on POSIX CI. Drive-letter and backslash paths use
+    PureWindowsPath; everything else uses PurePosixPath.
+    """
+    text = str(raw or "").strip().rstrip("\\/")
+    if not text:
+        return ""
+    if "\\" in text or (len(text) >= 2 and text[1] == ":"):
+        return PureWindowsPath(text).name
+    return PurePosixPath(text).name
+
+
 def _slug_from_path(path: Path) -> str:
-    name = path.name.strip().lower().replace(" ", "-")
+    name = path_leaf(path).strip().lower().replace(" ", "-")
     name = re.sub(r"[^a-z0-9.-]+", "-", name)
     return name.strip("-")
 
@@ -254,8 +269,9 @@ def _metadata(path: Path) -> dict[str, Any]:
 def classify_candidate(candidate: dict[str, Any]) -> tuple[str, list[str], str]:
     """Return (classification, evidence, confidence). Never invents Clanks."""
     evidence: list[str] = []
-    path = Path(candidate.get("local_path") or "")
-    name = path.name.lower() if path else ""
+    raw_path = candidate.get("local_path") or ""
+    path = Path(raw_path)
+    name = path_leaf(raw_path).lower()
     slug = candidate.get("slug") or ""
     heading = (candidate.get("readme_heading") or "").lower()
     excerpt = " ".join(candidate.get("readme_excerpt") or []).lower()

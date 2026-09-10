@@ -7,8 +7,10 @@ Merged Foundation 3 baseline on `main`: `c54387abd9f953fca43a01104ae97665e84e95a
 ## What it does
 
 - GitHub Actions `pytest` on `pull_request` and `push` to `main`. No cron. Not collection. Not a Windows Task Scheduler entry.
-- Read-only `gh` observation of check-runs / combined status for a SHA (`source=GITHUB`).
-- Terminal RECONCILIATION shows CI check state. Empty checks are `none`, never `success`. GitHub combined `pending`/`success` with zero check-runs and zero status contexts is also `none`.
+- Read-only `gh` observation of check-runs **and** status contexts for a SHA (`source=GITHUB`). Roll-up is unified: failure in either source is failure.
+- Empty CI is `none` only when **both** observers succeeded and returned no check-runs and no status contexts. GitHub combined `pending`/`success` with zero contexts is not evidence.
+- If status contexts (or check-runs) could not be observed, the state is `unknown`, never `none`.
+- `success` requires every check-run to be `completed` (completeness before success). Incomplete runs are `pending`.
 - CI observation does **not** change git `aligned` / `partial` / `drift` reduction. Observer `ok=True` is still not git corroboration.
 - Tests that inject `inspect_remote` never call live `gh` for checks.
 
