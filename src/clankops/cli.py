@@ -819,7 +819,7 @@ def cmd_ci_capture(args: argparse.Namespace) -> int:
 
     store = _store(args)
     try:
-        payload = capture_ci(store, args.clank)
+        payload = capture_ci(store, args.clank, mission=args.mission)
     finally:
         store.conn.close()
     if args.json:
@@ -1004,8 +1004,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="record observed GitHub CI as a Mission artefact (write; not reconcile)",
     )
     csub = p.add_subparsers(dest="ci_action", required=True)
-    p = csub.add_parser("capture", help="attach current GitHub check-run observation to the unfinished Mission")
+    p = csub.add_parser(
+        "capture",
+        help="attach current GitHub CI observation to an unfinished Mission",
+    )
     p.add_argument("clank", help="Clank slug or id")
+    p.add_argument(
+        "--mission",
+        help="unfinished Mission id (COPS-xxxxxx); required if several unfinished Missions exist",
+    )
     p.set_defaults(func=cmd_ci_capture)
 
     p = sub.add_parser("terminal", help="read-only localhost Clank Terminal (alpha)")

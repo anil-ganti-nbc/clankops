@@ -60,6 +60,7 @@ python -m clankops --json sessions open
 python -m clankops --json sessions stale --older-than 24h
 python -m clankops --json reconcile clankops
 python -m clankops --json ci capture clankops
+python -m clankops --json ci capture clankops --mission COPS-000011
 python -m clankops terminal
 ```
 
