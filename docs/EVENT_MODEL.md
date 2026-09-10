@@ -33,7 +33,7 @@ Corrections are new events. Existing events are never silently edited to represe
 | `MISSION_STATE_CHANGED` | from_state, to_state, optional reason / superseded_by |
 | `SESSION_STARTED` | actor |
 | `SESSION_ENDED` | — |
-| `CHECKPOINT_RECORDED` | completed, current_work, next_action, outstanding, blockers, tests, branch, head, working_tree, artifacts, notes |
+| `CHECKPOINT_RECORDED` | completed, current_work, next_action, outstanding, blockers, tests, optional branch/head/working_tree, optional git_evidence, artifacts, notes |
 | `TASK_CREATED` | task_id, title, state |
 | `TASK_STATE_CHANGED` | task_id, from_state, to_state |
 | `FEATURE_ADDED` | feature_id, name, state |
@@ -76,7 +76,7 @@ Done and cancelled are terminal.
 
 A checkpoint is how ClankOps answers “where exactly did we leave this?”. Fields are optional; unknown stays unknown. `next_action` is only shown if recorded. Foundation 0 never asks an LLM to invent one.
 
-`--capture-git` attaches local branch / HEAD / dirty-or-clean as `LOCAL_GIT` evidence. That is not a GitHub confirmation.
+Event `source` describes who made the semantic claims (typically `AGENT_REPORT` for Cursor, `USER` when a human says so, `RECONSTRUCTED` for inferred history). `--capture-git` and `handoff` attach inspected branch / HEAD / dirty-or-clean under `payload.git_evidence` with `source=LOCAL_GIT`. Capturing git does not rewrite the checkpoint event's source, does not turn completed/current/next/notes into git facts, and is not a GitHub confirmation.
 
 ## Artifacts
 

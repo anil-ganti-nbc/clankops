@@ -30,9 +30,19 @@ PowerShell helper: `scripts/clankops-dev.ps1`. It locates Python 3.14, imports `
 
 ## Session environment
 
-Written to `%USERPROFILE%\.clankops\active-context.json` and `active-context.env` on `work start/resume`, `checkpoint`, and `handoff`. A copy is also stored as `sessions\<session_id>.json` so an abrupt stop still has last Session start, last checkpoint fields, and last-known Git from the last successful write.
+Per-Clank context (not a single global file):
 
-See [CURSOR_AGENT_CONTRACT.md](CURSOR_AGENT_CONTRACT.md) for the variable table.
+```text
+%USERPROFILE%\.clankops\
+    contexts\<clank-id>.json
+    contexts\<clank-id>.env
+    sessions\<session-id>.json
+    last-active.json          # convenience pointer only; never proof of workspace identity
+```
+
+`work start` / `work resume` / `checkpoint` write the owning Clank's context plus an immutable Session snapshot. `handoff` keeps the snapshot, marks that Clank's context as ended, and stops advertising `CLANKOPS_SESSION_ID` as active. `work env` identifies the expected Clank from an explicit slug, exported `CLANKOPS_CLANK_ID`/`SESSION_ID`, or the current registered checkout path. It never succeeds merely because some other Clank has a valid last-active Session.
+
+PowerShell: `scripts/clankops-dev.ps1`. Dot-source it so `CLANKOPS_*` lands in the current shell. `resume` and `start` load env from the JSON payload, then `work env`. `-LaunchCursor` opens the canonical target Clank path (not ClankOps unless ClankOps is the Session Clank). After `handoff`, Session/Mission/Clank variables are cleared. Pass `-Database` for an alternate ledger (avoid `-Db`; it collides with PowerShell `-Debug`). Python 3.14+ is compared as a real version, not a string.
 
 ## Failure / recovery
 

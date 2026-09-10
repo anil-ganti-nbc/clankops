@@ -51,10 +51,13 @@ One command checkpoints (with local git capture), then sets Mission state. Sessi
 | `CLANKOPS_MISSION_ID` | Durable Mission UUID |
 | `CLANKOPS_MISSION_DISPLAY` | `COPS-000123` |
 | `CLANKOPS_SESSION_ID` | Open Session UUID |
-| `CLANKOPS_CONTEXT_FILE` | Last written `active-context.json` |
+| `CLANKOPS_CONTEXT_FILE` | This Clank's `contexts\<clank-id>.json` |
+| `CLANKOPS_CLANK_PATH` | Canonical local checkout for LaunchCursor / identity |
 | `CLANKOPS_HOME` | Override directory for context files (tests). Not the git checkout. |
 | `CLANKOPS_ROOT` | Git checkout of clankops (PowerShell launcher / `PYTHONPATH`) |
 
-`python -m clankops work env` validates the exported Session. Invalid or cross-Clank Sessions fail with `CLANKOPS INTEGRATION FAILED` and a recovery command. Emergency coding is not blocked; do not keep a bad `CLANKOPS_SESSION_ID`.
+`python -m clankops work env` validates the Session for **this** Clank/workspace. A last-active pointer from another Clank is not enough. Invalid, closed, or cross-Clank Sessions fail with `CLANKOPS INTEGRATION FAILED` and a recovery command. Emergency coding is not blocked; do not keep a bad `CLANKOPS_SESSION_ID`.
+
+Cursor `--actor cursor` records semantic checkpoints as `AGENT_REPORT` unless `--source` is set explicitly. `--capture-git` / `handoff` attach `payload.git_evidence` with `source=LOCAL_GIT`; they do not relabel completed/current/next/notes as local git, and they never mint `GITHUB` facts.
 
 Dashboard/collection `.cmd` files under `_Launchers` are not Cursor launchers. Do not wrap them with Sessions. Collection stays a manual GUI action.

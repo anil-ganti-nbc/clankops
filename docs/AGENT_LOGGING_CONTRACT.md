@@ -8,7 +8,7 @@ Foundation 0/0.1 is the ledger. Foundation 1 makes Cursor adoption operational v
 
 1. **Identify the Clank before changing it.** `clankctl show <clank>` or `clankctl list`. If missing, `clankctl register` with path and remote. Do not invent a second identity for a rename; add an alias or update a ref.
 2. **Open or resume a Mission.** Prefer `clankctl work resume <clank>` so an unfinished Mission is reused. Use `clankctl work start <clank> "<objective>"` only for a new objective (`--new-mission` if one is already unfinished). A Mission is a coherent objective, not a chat session.
-3. **Record the actor and Session.** Pass `--actor`. `work start` / `work resume` open a Session, write `%USERPROFILE%\.clankops\active-context.json`, and print `$env:CLANKOPS_*` assignments.
+3. **Record the actor and Session.** Pass `--actor`. `work start` / `work resume` open a Session, write `%USERPROFILE%\.clankops\contexts\<clank-id>.json`, snapshot `sessions\<session-id>.json`, and print `$env:CLANKOPS_*` assignments. `last-active.json` is a convenience pointer only.
 
    Attribute later mutations using **one** of:
 

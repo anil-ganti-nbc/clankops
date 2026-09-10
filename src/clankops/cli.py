@@ -17,7 +17,8 @@ from clankops.context import (
     build_context,
     env_from_os,
     format_powershell_env,
-    read_context,
+    is_clankops_tool_checkout,
+    read_clank_context,
     validate_session_env,
     write_context,
 )
@@ -27,6 +28,19 @@ from clankops.gitinspect import inspect_git
 from clankops.store import Store, open_store
 
 DEFAULT_DB = Path(os.environ.get("CLANKOPS_DB") or (Path.home() / ".clankops" / "clankops.db"))
+USER_ACTORS = frozenset({"user", "operator"})
+
+
+def resolve_invocation_source(actor: str | None, source: str | None) -> str:
+    """Default provenance: USER for human actors, AGENT_REPORT otherwise.
+
+    An explicit --source always wins. Capturing git never changes this.
+    """
+    if source:
+        return str(source)
+    if (actor or "").strip().lower() in USER_ACTORS:
+        return EventSource.USER
+    return EventSource.AGENT_REPORT
 
 
 def _json(obj: Any) -> str:
@@ -64,6 +78,13 @@ def _capture_git(store: Store, mission_token: str) -> dict[str, str | None]:
         "head": git.get("head"),
         "working_tree": _git_working_label(git),
     }
+
+
+def _git_evidence(store: Store, mission_token: str) -> dict[str, Any] | None:
+    fields = _capture_git(store, mission_token)
+    if not any(fields.values()):
+        return None
+    return {"source": EventSource.LOCAL_GIT, **fields}
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -203,15 +224,15 @@ def cmd_mission_transition(args: argparse.Namespace) -> int:
     store = _store(args)
     action = args.mission_action
     if action == "pause":
-        row = store.pause_mission(args.mission, actor=args.actor)
+        row = store.pause_mission(args.mission, actor=args.actor, source=args.source)
     elif action == "resume":
-        row = store.resume_mission(args.mission, actor=args.actor)
+        row = store.resume_mission(args.mission, actor=args.actor, source=args.source)
     elif action == "complete":
-        row = store.complete_mission(args.mission, actor=args.actor)
+        row = store.complete_mission(args.mission, actor=args.actor, source=args.source)
     elif action == "abandon":
-        row = store.abandon_mission(args.mission, actor=args.actor)
+        row = store.abandon_mission(args.mission, actor=args.actor, source=args.source)
     elif action == "block":
-        row = store.block_mission(args.mission, actor=args.actor)
+        row = store.block_mission(args.mission, actor=args.actor, source=args.source)
     else:
         raise ClankOpsError(f"unknown mission action {action}")
     extra = f" session={row['session_id']}" if row.get("session_id") else ""
@@ -315,52 +336,129 @@ def cmd_work_resume(args: argparse.Namespace) -> int:
     return 0
 
 
+def _workspace_clank_matches(store: Store, workspace: Path) -> list[dict[str, Any]]:
+    matches = store.find_clanks_for_path(workspace)
+    if is_clankops_tool_checkout(workspace):
+        return [m for m in matches if m.get("slug") != "clankops"]
+    return matches
+
+
+def _resolve_expected_clank(
+    store: Store,
+    *,
+    explicit: str | None,
+    workspace: Path,
+    exported_clank_id: str | None,
+) -> dict[str, Any]:
+    path_matches = _workspace_clank_matches(store, workspace)
+    if len(path_matches) > 1:
+        listed = ", ".join(m["slug"] for m in path_matches)
+        raise ValidationError(
+            f"workspace {workspace} matches multiple Clanks ({listed}). "
+            "Pass an explicit Clank slug to work env."
+        )
+    path_clank = path_matches[0] if path_matches else None
+
+    if explicit:
+        expected = store.resolve_clank(explicit)
+        if path_clank and path_clank["clank_id"] != expected["clank_id"]:
+            raise ValidationError(
+                f"requested Clank {expected['slug']} does not match workspace "
+                f"{workspace} ({path_clank['slug']}). " + RECOVERY_HINT
+            )
+        if exported_clank_id:
+            exported = store.resolve_clank(exported_clank_id)
+            if exported["clank_id"] != expected["clank_id"]:
+                raise ValidationError(
+                    f"exported CLANKOPS_CLANK_ID is {exported['slug']} but "
+                    f"requested Clank is {expected['slug']}. " + RECOVERY_HINT
+                )
+        return expected
+
+    if path_clank and exported_clank_id:
+        exported = store.resolve_clank(exported_clank_id)
+        if exported["clank_id"] != path_clank["clank_id"]:
+            raise ValidationError(
+                f"exported identity is {exported['slug']} but this workspace is "
+                f"{path_clank['slug']}. " + RECOVERY_HINT
+            )
+        return path_clank
+
+    if path_clank:
+        return path_clank
+
+    if exported_clank_id:
+        return store.resolve_clank(exported_clank_id)
+
+    raise ValidationError(
+        "cannot determine expected Clank for work env. Pass a Clank slug, "
+        "--path of a registered checkout, or export CLANKOPS_CLANK_ID from "
+        "work resume. last-active.json is not proof of workspace identity. "
+        + RECOVERY_HINT
+    )
+
+
 def cmd_work_env(args: argparse.Namespace) -> int:
     store = _store(args)
     env = env_from_os()
-    file_ctx = read_context()
-    if env.get("CLANKOPS_SESSION_ID"):
-        session_id = env.get("CLANKOPS_SESSION_ID")
-        mission_id = env.get("CLANKOPS_MISSION_ID")
-        clank_id = env.get("CLANKOPS_CLANK_ID")
-    else:
-        session_id = (file_ctx or {}).get("session_id")
-        mission_id = (file_ctx or {}).get("mission_id")
-        clank_id = (file_ctx or {}).get("clank_id")
+    workspace = Path(args.path).resolve() if getattr(args, "path", None) else Path.cwd()
+    exported_clank_id = env.get("CLANKOPS_CLANK_ID")
+    if not exported_clank_id and env.get("CLANKOPS_SESSION_ID"):
+        try:
+            exported_clank_id = store.resolve_session(env["CLANKOPS_SESSION_ID"])["clank_id"]
+        except ClankOpsError:
+            exported_clank_id = None
     try:
+        expected = _resolve_expected_clank(
+            store,
+            explicit=getattr(args, "clank", None),
+            workspace=workspace,
+            exported_clank_id=exported_clank_id,
+        )
+        file_ctx = read_clank_context(expected["clank_id"])
+        if env.get("CLANKOPS_SESSION_ID"):
+            session_id = env.get("CLANKOPS_SESSION_ID")
+            mission_id = env.get("CLANKOPS_MISSION_ID")
+        elif file_ctx and file_ctx.get("active") and not file_ctx.get("session_ended"):
+            session_id = file_ctx.get("session_id")
+            mission_id = file_ctx.get("mission_id")
+        else:
+            session_id = None
+            mission_id = None
         row = validate_session_env(
             store,
             session_id=session_id,
             mission_id=mission_id,
-            clank_id=clank_id,
+            clank_id=expected["clank_id"],
             actor=args.actor,
         )
     except ClankOpsError as exc:
         sys.stderr.write(f"CLANKOPS INTEGRATION FAILED\nerror: {exc}\n{RECOVERY_HINT}\n")
         store.conn.close()
         return 2
+    file_ctx = read_clank_context(expected["clank_id"]) or {}
     payload = {
         "ok": True,
         "session_id": row["session_id"],
         "mission_id": row["mission_id"],
         "clank_id": row["clank_id"],
+        "clank_slug": expected.get("slug"),
         "actor": row["actor"],
         "env": env,
-        "context_file": str((file_ctx or {}).get("context_file") or ""),
+        "context_file": str(file_ctx.get("context_file") or ""),
     }
-    _print("ClankOps context is valid\n" + format_powershell_env({"env": {
-        **{k: env.get(k) or "" for k in (file_ctx or {}).get("env", {})},
-    }}), as_json=args.json, payload=payload)
+    _print(
+        "ClankOps context is valid\n" + format_powershell_env(file_ctx or {"env": env}),
+        as_json=args.json,
+        payload=payload,
+    )
     store.conn.close()
     return 0
 
 
 def cmd_handoff(args: argparse.Namespace) -> int:
     store = _store(args)
-    git_fields = _capture_git(store, args.mission)
-    source = args.source
-    if source == EventSource.USER:
-        source = EventSource.LOCAL_GIT
+    evidence = _git_evidence(store, args.mission)
     result = store.handoff_mission(
         args.mission,
         args.state,
@@ -370,12 +468,13 @@ def cmd_handoff(args: argparse.Namespace) -> int:
         outstanding=_split_csv(args.outstanding),
         blockers=_split_csv(args.blockers),
         tests=args.tests,
-        branch=args.branch or git_fields.get("branch"),
-        head=args.head or git_fields.get("head"),
-        working_tree=args.working_tree or git_fields.get("working_tree"),
+        branch=args.branch,
+        head=args.head,
+        working_tree=args.working_tree,
+        git_evidence=evidence,
         notes=args.notes,
         actor=args.actor,
-        source=source,
+        source=args.source,
     )
     session_row = store.resolve_session(
         result["checkpoint"]["session_id"]
@@ -431,15 +530,7 @@ def cmd_rel_add(args: argparse.Namespace) -> int:
 
 def cmd_checkpoint(args: argparse.Namespace) -> int:
     store = _store(args)
-    git_fields: dict[str, Any] = {}
-    source = args.source
-    if args.capture_git:
-        git_fields = _capture_git(store, args.mission)
-        # Git facts are LOCAL_GIT; notes remain actor-sourced in the same
-        # event payload but provenance.source stays the invocation source
-        # unless the user did not override it.
-        if source == EventSource.USER:
-            source = EventSource.LOCAL_GIT
+    evidence = _git_evidence(store, args.mission) if args.capture_git else None
     row = store.record_checkpoint(
         args.mission,
         completed=args.completed,
@@ -448,12 +539,13 @@ def cmd_checkpoint(args: argparse.Namespace) -> int:
         outstanding=_split_csv(args.outstanding),
         blockers=_split_csv(args.blockers),
         tests=args.tests,
-        branch=args.branch or git_fields.get("branch"),
-        head=args.head or git_fields.get("head"),
-        working_tree=args.working_tree or git_fields.get("working_tree"),
+        branch=args.branch,
+        head=args.head,
+        working_tree=args.working_tree,
+        git_evidence=evidence,
         notes=args.notes,
         actor=args.actor,
-        source=source,
+        source=args.source,
     )
     if row.get("session_id"):
         _persist_work_context(
@@ -640,8 +732,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--actor", default=os.environ.get("CLANKOPS_ACTOR") or "user")
     parser.add_argument(
         "--source",
-        default=EventSource.USER,
+        default=None,
         choices=[s.value for s in EventSource],
+        help="Evidence provenance (default: USER for --actor user/operator, else AGENT_REPORT)",
     )
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument(
@@ -710,7 +803,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = wsub.add_parser("resume", help="resume the unfinished Mission (does not invent a new one)")
     p.add_argument("target", help="Clank slug or Mission id")
     p.set_defaults(func=cmd_work_resume)
-    p = wsub.add_parser("env", help="validate exported Session context; fail loudly if stale")
+    p = wsub.add_parser("env", help="validate Session context for this Clank/workspace")
+    p.add_argument("clank", nargs="?", default=None, help="expected Clank slug or id")
+    p.add_argument(
+        "--path",
+        default=None,
+        help="workspace path to identify the Clank (default: current directory)",
+    )
     p.set_defaults(func=cmd_work_env)
 
     p = sub.add_parser("handoff", help="checkpoint, capture git, and pause/block/complete/abandon")
@@ -843,6 +942,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     try:
         args = parser.parse_args(list(argv) if argv is not None else None)
+        args.source = resolve_invocation_source(args.actor, args.source)
         return int(args.func(args))
     except ClankOpsError as exc:
         sys.stderr.write(f"error: {exc}\n")

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from clankops.cli import main
-from clankops.context import active_context_path
+from clankops.context import read_context
 from clankops.errors import ValidationError
 from clankops.store import open_store
 
@@ -25,7 +25,8 @@ def test_work_resume_exports_context_and_handoff_pauses(tmp_path: Path, capsys) 
     started = capsys.readouterr().out
     assert "COPS-000001" in started
     assert "CLANKOPS_SESSION_ID" in started
-    ctx = json.loads(active_context_path().read_text(encoding="utf-8"))
+    ctx = read_context()
+    assert ctx is not None
     first_session = ctx["session_id"]
     assert ctx["env"]["CLANKOPS_CLANK_SLUG"] == "oem-radar"
 
@@ -56,7 +57,8 @@ def test_work_resume_exports_context_and_handoff_pauses(tmp_path: Path, capsys) 
     assert main(["--db", db, "--actor", "cursor", "work", "resume", "oem-radar"]) == 0
     resumed = capsys.readouterr().out
     assert "resumed COPS-000001" in resumed
-    ctx2 = json.loads(active_context_path().read_text(encoding="utf-8"))
+    ctx2 = read_context()
+    assert ctx2 is not None
     assert ctx2["session_id"] != first_session
     assert ctx2["mission_display"] == "COPS-000001"
 
@@ -179,6 +181,10 @@ def test_dev_script_fails_visibly() -> None:
     assert "CLANKOPS INTEGRATION FAILED" in text
     assert "Emergency coding is not blocked" in text
     assert "Run Collection" not in text
+    assert '-ge "3.14"' not in text
+    assert "[int]::TryParse" in text
+    assert "Invoke-ClankOpsCursor" in text
+    assert "Clear-ClankOpsActiveEnv" in text
 
 
 def test_cross_clank_session_cannot_checkpoint(tmp_path: Path) -> None:
