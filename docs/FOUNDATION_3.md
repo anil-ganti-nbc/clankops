@@ -46,4 +46,4 @@ Dossier **RECONCILIATION** wording follows status. It never says live observatio
 - Auto-updating checkpoints to match live git
 - `git fetch` / cleaning dirty trees
 - Closing stale Sessions
-- Foundation 4 CI ingestion
+- CI check-run observation (Foundation 4)

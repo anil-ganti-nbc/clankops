@@ -416,14 +416,21 @@ def _dossier_html(payload: dict[str, Any]) -> str:
         f"#{p.get('number')} {p.get('head_ref')} {(p.get('head') or '')[:7]}"
         for p in (prs or [])
     ) or "none"
+    checks = (github.get("checks") or {}) if github else {}
+    check_runs = checks.get("runs") or []
+    check_run_text = ", ".join(
+        f"{run.get('name') or 'check'} {run.get('conclusion') or run.get('status') or 'unknown'}"
+        for run in check_runs
+    ) or "no check-runs"
     reconcile_section = f"""
 <h2>RECONCILIATION</h2>
-<p class="muted">Independent LOCAL_GIT / GITHUB observation vs recorded claims. Observer success is not corroboration. History is not rewritten.</p>
+<p class="muted">Independent LOCAL_GIT / GITHUB observation vs recorded claims. Observer success is not corroboration. Empty CI checks are none, never success. History is not rewritten.</p>
 <table>
   <tr><th>status</th><td>{_mark(_unknown(status))} {html.escape(caption)}</td></tr>
   <tr><th>recorded claim</th><td>{html.escape(_unknown(recorded.get('branch')))} / {html.escape(_unknown(recorded.get('head')))} / {html.escape(_unknown(recorded.get('working_tree')))} [{html.escape(_unknown(recorded.get('event_source')))}]</td></tr>
   <tr><th>LOCAL_GIT</th><td>{_mark('LOCAL_GIT')} {html.escape(_unknown(local.get('branch')))} / {html.escape(_unknown(local.get('head')))} / {html.escape(_unknown(local.get('working_tree')))} {html.escape(local.get('error') or '')}</td></tr>
   <tr><th>GITHUB</th><td>{_mark('GITHUB')} default {html.escape(_unknown(github.get('default_branch') if github else None))} / {html.escape(_unknown(github.get('default_branch_head') if github else None))} PRs {html.escape(pr_text)} {html.escape(str(github_err or ''))}</td></tr>
+  <tr><th>CI checks</th><td>{_mark('GITHUB')} {html.escape(_unknown(checks.get('state')))} sha {html.escape(_unknown(checks.get('sha')))} {html.escape(check_run_text)} {html.escape(_unknown(checks.get('error')))}</td></tr>
 </table>
 {cmp_table}
 {result_block}

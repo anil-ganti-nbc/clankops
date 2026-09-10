@@ -126,3 +126,96 @@ def inspect_github(repo: str | None) -> dict[str, Any]:
             result["error"] = err or out or f"gh api commit failed ({code})"
     result["ok"] = True
     return result
+
+
+def inspect_commit_status(repo: str | None, sha: str | None) -> dict[str, Any]:
+    """Observe GitHub check-runs and combined status for a SHA. GET-only."""
+    result: dict[str, Any] = {
+        "source": EventSource.GITHUB,
+        "ok": False,
+        "error": None,
+        "repo": repo,
+        "sha": sha,
+        "state": None,
+        "runs": [],
+    }
+    if not repo:
+        result["error"] = "no GitHub repo"
+        return result
+    if not sha:
+        result["error"] = "no commit SHA"
+        return result
+    code, out, err = run_gh(["api", f"repos/{repo}/commits/{sha}/check-runs"])
+    if code != 0:
+        result["error"] = err or out or f"gh api check-runs failed ({code})"
+        return result
+    try:
+        payload = json.loads(out or "{}")
+    except json.JSONDecodeError:
+        result["error"] = "gh api check-runs returned invalid JSON"
+        return result
+    runs = []
+    for row in payload.get("check_runs") or []:
+        runs.append(
+            {
+                "name": row.get("name"),
+                "status": row.get("status"),
+                "conclusion": row.get("conclusion"),
+                "html_url": row.get("html_url"),
+            }
+        )
+    result["runs"] = runs
+    combined_state = None
+    combined_total = None
+    code, out, err = run_gh(["api", f"repos/{repo}/commits/{sha}/status"])
+    if code == 0:
+        try:
+            combined = json.loads(out or "{}")
+            combined_state = combined.get("state")
+            combined_total = combined.get("total_count")
+        except json.JSONDecodeError:
+            result["error"] = "gh api commit status returned invalid JSON"
+    else:
+        result["error"] = err or out or f"gh api commit status failed ({code})"
+    result["combined_state"] = combined_state
+    result["combined_total"] = combined_total
+    result["state"] = rollup_ci_state(runs, combined_state, combined_total)
+    result["ok"] = True
+    return result
+
+
+def rollup_ci_state(
+    runs: list[dict[str, Any]],
+    combined_state: str | None = None,
+    combined_total: int | None = None,
+) -> str:
+    """Empty checks/statuses are none, never success. Failure beats pending beats success.
+
+    GitHub combined status for a SHA with zero contexts is often pending or even
+    success. That is not CI evidence.
+    """
+    conclusions = [str(run.get("conclusion") or "").lower() for run in runs]
+    statuses = [str(run.get("status") or "").lower() for run in runs]
+    combined = (combined_state or "").lower()
+    failed = {"failure", "cancelled", "timed_out", "action_required", "error"}
+    if any(item in failed for item in conclusions):
+        return "failure"
+    if any(item in {"queued", "in_progress", "pending"} for item in statuses):
+        return "pending"
+    if runs and all(item == "success" for item in conclusions):
+        return "success"
+    if runs:
+        return "unknown"
+    try:
+        total = int(combined_total) if combined_total is not None else 0
+    except (TypeError, ValueError):
+        total = 0
+    if total > 0:
+        if combined in failed:
+            return "failure"
+        if combined == "pending":
+            return "pending"
+        if combined == "success":
+            return "success"
+        return "unknown"
+    return "none"

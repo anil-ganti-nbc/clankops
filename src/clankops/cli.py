@@ -794,12 +794,15 @@ def cmd_reconcile(args: argparse.Namespace) -> int:
         )
     for row in rows:
         drift = row.get("drift") or []
+        checks = (row.get("observed_github") or {}).get("checks") or {}
+        ci = checks.get("state") if checks else None
         lines.append(
             f"{row.get('slug')} [{row.get('status')}] "
             f"recorded={row.get('recorded', {}).get('branch') or 'unknown'}/"
             f"{row.get('head_short_recorded') or 'unknown'} "
             f"LOCAL_GIT={row.get('observed_local', {}).get('branch') or 'unknown'}/"
             f"{row.get('head_short_local') or 'unknown'} "
+            f"CI={ci or 'unknown'} "
             f"drift={len(drift)}"
         )
         for item in drift:

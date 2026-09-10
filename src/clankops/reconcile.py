@@ -14,7 +14,7 @@ from typing import Any, Callable
 from clankops.enums import EventSource
 from clankops.events import EVENT_COLUMNS, event_from_row
 from clankops.gitinspect import inspect_git
-from clankops.githubinspect import github_repo_id, inspect_github
+from clankops.githubinspect import github_repo_id, inspect_commit_status, inspect_github
 from clankops.store import Store
 from clankops.timefmt import short_head
 
@@ -332,6 +332,23 @@ def reconcile_clank(
                 "candidates": choice.get("candidates") or [],
                 "selection_rule": choice.get("rule"),
             }
+        sha = (
+            observed_local.get("head")
+            or recorded.get("head")
+            or (observed_github or {}).get("default_branch_head")
+        )
+        if observed_github is not None and "checks" not in observed_github:
+            if inspect_remote is None and choice.get("repo"):
+                observed_github["checks"] = inspect_commit_status(choice["repo"], sha)
+            else:
+                observed_github["checks"] = {
+                    "source": EventSource.GITHUB,
+                    "ok": False,
+                    "error": "not requested",
+                    "sha": sha,
+                    "state": None,
+                    "runs": [],
+                }
 
     github_ok = bool(observed_github and observed_github.get("ok"))
     default_branch = observed_github.get("default_branch") if github_ok else None
