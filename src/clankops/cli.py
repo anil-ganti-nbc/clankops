@@ -12,8 +12,17 @@ from typing import Any, Sequence
 from clankops.brief import format_brief, format_history
 from clankops.census import load_census, run_census, write_census
 from clankops.db import current_schema_version
-from clankops.enums import EventSource, FeatureState
-from clankops.errors import ClankOpsError
+from clankops.context import (
+    RECOVERY_HINT,
+    build_context,
+    env_from_os,
+    format_powershell_env,
+    read_context,
+    validate_session_env,
+    write_context,
+)
+from clankops.enums import EventSource, FeatureState, MissionState
+from clankops.errors import ClankOpsError, NotFoundError, ValidationError
 from clankops.gitinspect import inspect_git
 from clankops.store import Store, open_store
 
@@ -46,20 +55,14 @@ def _split_csv(value: str | None) -> list[str]:
 
 def _capture_git(store: Store, mission_token: str) -> dict[str, str | None]:
     mission = store.resolve_mission(mission_token)
-    detail = store.clank_detail(mission["clank_id"])
-    path = next((r["ref_value"] for r in detail["refs"] if r["ref_kind"] == "local_path"), None)
+    path = store.canonical_local_path(mission["clank_id"])
     if not path or not Path(path).exists():
         return {}
     git = inspect_git(path)
-    working = None
-    if git.get("dirty") is True:
-        working = f"dirty ({git.get('dirty_count')} paths)"
-    elif git.get("dirty") is False:
-        working = "clean"
     return {
         "branch": git.get("current_branch"),
         "head": git.get("head"),
-        "working_tree": working,
+        "working_tree": _git_working_label(git),
     }
 
 
@@ -221,6 +224,211 @@ def cmd_mission_transition(args: argparse.Namespace) -> int:
     return 0
 
 
+def _git_working_label(git: dict[str, Any]) -> str | None:
+    if git.get("dirty") is True:
+        return f"dirty ({git.get('dirty_count')} paths)"
+    if git.get("dirty") is False:
+        return "clean"
+    return None
+
+
+def _persist_work_context(
+    store: Store,
+    args: argparse.Namespace,
+    mission: dict[str, Any],
+    session: dict[str, Any],
+) -> dict[str, Any]:
+    clank = store.clank_detail(mission["clank_id"])
+    path = store.canonical_local_path(clank["clank_id"])
+    git = inspect_git(path) if path and Path(path).exists() else {}
+    brief = format_brief(store.brief(clank["slug"]))
+    payload = build_context(
+        db=args.db,
+        actor=args.actor,
+        clank={**clank, "local_path": path},
+        mission=mission,
+        session=session,
+        git=git,
+        brief=brief,
+    )
+    write_context(payload)
+    return payload
+
+
+def _resolve_work_mission(store: Store, token: str) -> dict[str, Any]:
+    try:
+        return store.resolve_mission(token)
+    except NotFoundError:
+        pass
+    unfinished = store.unfinished_missions(token)
+    if not unfinished:
+        raise ValidationError(
+            f"no unfinished Mission for {token}. "
+            f"Read the brief, then: python -m clankops --actor cursor work start {token} \"<objective>\""
+        )
+    if len(unfinished) > 1:
+        listed = ", ".join(f"{m['display_id']} [{m['state']}]" for m in unfinished)
+        raise ValidationError(
+            f"multiple unfinished Missions for {token}: {listed}. "
+            "Pass an explicit Mission id to work resume."
+        )
+    return unfinished[0]
+
+
+def cmd_work_start(args: argparse.Namespace) -> int:
+    store = _store(args)
+    unfinished = store.unfinished_missions(args.clank)
+    if unfinished and not args.new_mission:
+        listed = ", ".join(f"{m['display_id']} [{m['state']}]" for m in unfinished)
+        raise ValidationError(
+            f"unfinished Mission already exists ({listed}). "
+            "Resume it with: python -m clankops --actor cursor work resume "
+            f"{unfinished[0]['display_id']}  (pass --new-mission only for a new objective)"
+        )
+    row = store.start_mission(args.clank, args.objective, actor=args.actor, source=args.source)
+    session = store.resolve_session(row["session_id"])
+    payload = _persist_work_context(store, args, store.resolve_mission(row["mission_id"]), session)
+    extra = f" session={session['session_id']}"
+    _print(
+        f"started {row['display_id']} [{row['state']}] {row['objective']}{extra}\n"
+        + format_powershell_env(payload),
+        as_json=args.json,
+        payload=payload,
+    )
+    store.conn.close()
+    return 0
+
+
+def cmd_work_resume(args: argparse.Namespace) -> int:
+    store = _store(args)
+    mission = _resolve_work_mission(store, args.target)
+    opened = store.open_work_session(mission["mission_id"], actor=args.actor, source=args.source)
+    payload = _persist_work_context(store, args, opened["mission"], opened["session"])
+    _print(
+        f"resumed {opened['mission']['display_id']} [{opened['mission']['state']}] "
+        f"session={opened['session']['session_id']}\n"
+        + format_powershell_env(payload),
+        as_json=args.json,
+        payload=payload,
+    )
+    store.conn.close()
+    return 0
+
+
+def cmd_work_env(args: argparse.Namespace) -> int:
+    store = _store(args)
+    env = env_from_os()
+    file_ctx = read_context()
+    if env.get("CLANKOPS_SESSION_ID"):
+        session_id = env.get("CLANKOPS_SESSION_ID")
+        mission_id = env.get("CLANKOPS_MISSION_ID")
+        clank_id = env.get("CLANKOPS_CLANK_ID")
+    else:
+        session_id = (file_ctx or {}).get("session_id")
+        mission_id = (file_ctx or {}).get("mission_id")
+        clank_id = (file_ctx or {}).get("clank_id")
+    try:
+        row = validate_session_env(
+            store,
+            session_id=session_id,
+            mission_id=mission_id,
+            clank_id=clank_id,
+            actor=args.actor,
+        )
+    except ClankOpsError as exc:
+        sys.stderr.write(f"CLANKOPS INTEGRATION FAILED\nerror: {exc}\n{RECOVERY_HINT}\n")
+        store.conn.close()
+        return 2
+    payload = {
+        "ok": True,
+        "session_id": row["session_id"],
+        "mission_id": row["mission_id"],
+        "clank_id": row["clank_id"],
+        "actor": row["actor"],
+        "env": env,
+        "context_file": str((file_ctx or {}).get("context_file") or ""),
+    }
+    _print("ClankOps context is valid\n" + format_powershell_env({"env": {
+        **{k: env.get(k) or "" for k in (file_ctx or {}).get("env", {})},
+    }}), as_json=args.json, payload=payload)
+    store.conn.close()
+    return 0
+
+
+def cmd_handoff(args: argparse.Namespace) -> int:
+    store = _store(args)
+    git_fields = _capture_git(store, args.mission)
+    source = args.source
+    if source == EventSource.USER:
+        source = EventSource.LOCAL_GIT
+    result = store.handoff_mission(
+        args.mission,
+        args.state,
+        completed=args.completed,
+        current_work=args.current,
+        next_action=args.next,
+        outstanding=_split_csv(args.outstanding),
+        blockers=_split_csv(args.blockers),
+        tests=args.tests,
+        branch=args.branch or git_fields.get("branch"),
+        head=args.head or git_fields.get("head"),
+        working_tree=args.working_tree or git_fields.get("working_tree"),
+        notes=args.notes,
+        actor=args.actor,
+        source=source,
+    )
+    session_row = store.resolve_session(
+        result["checkpoint"]["session_id"]
+    ) if result["checkpoint"].get("session_id") else None
+    if session_row:
+        _persist_work_context(store, args, result["mission"], session_row)
+    _print(
+        f"handoff {result['mission']['display_id']} -> {result['mission']['state']} "
+        f"checkpoint={result['checkpoint']['checkpoint_id']}",
+        as_json=args.json,
+        payload=result,
+    )
+    store.conn.close()
+    return 0
+
+
+def cmd_ref_add(args: argparse.Namespace) -> int:
+    store = _store(args)
+    event = store.update_ref(
+        args.clank,
+        args.kind,
+        args.value,
+        canonical=args.canonical,
+        actor=args.actor,
+        source=args.source,
+    )
+    _print(
+        f"ref {args.kind} {args.value}",
+        as_json=args.json,
+        payload={"event_id": event.event_id, "kind": args.kind, "value": args.value},
+    )
+    store.conn.close()
+    return 0
+
+
+def cmd_rel_add(args: argparse.Namespace) -> int:
+    store = _store(args)
+    row = store.add_relationship(
+        args.from_clank,
+        args.kind,
+        args.to_clank,
+        actor=args.actor,
+        source=args.source,
+    )
+    _print(
+        f"relationship {row['kind']} {row['from_clank_id']} -> {row['to_clank_id']}",
+        as_json=args.json,
+        payload=row,
+    )
+    store.conn.close()
+    return 0
+
+
 def cmd_checkpoint(args: argparse.Namespace) -> int:
     store = _store(args)
     git_fields: dict[str, Any] = {}
@@ -247,6 +455,13 @@ def cmd_checkpoint(args: argparse.Namespace) -> int:
         actor=args.actor,
         source=source,
     )
+    if row.get("session_id"):
+        _persist_work_context(
+            store,
+            args,
+            store.resolve_mission(args.mission),
+            store.resolve_session(row["session_id"]),
+        )
     _print(
         f"checkpoint {row['checkpoint_id']} recorded for mission",
         as_json=args.json,
@@ -415,7 +630,7 @@ def cmd_census_import_file(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="clankctl",
-        description="ClankOps development ledger (Foundation 0)",
+        description="ClankOps development ledger (Foundation 1)",
     )
     parser.add_argument(
         "--db",
@@ -480,6 +695,64 @@ def build_parser() -> argparse.ArgumentParser:
         p = msub.add_parser(action)
         p.add_argument("mission")
         p.set_defaults(func=cmd_mission_transition)
+
+    work = sub.add_parser("work", help="start or resume a Cursor development Session")
+    wsub = work.add_subparsers(dest="work_action", required=True)
+    p = wsub.add_parser("start", help="explicitly create a new Mission and open a Session")
+    p.add_argument("clank")
+    p.add_argument("objective")
+    p.add_argument(
+        "--new-mission",
+        action="store_true",
+        help="create a new Mission even if an unfinished one exists",
+    )
+    p.set_defaults(func=cmd_work_start)
+    p = wsub.add_parser("resume", help="resume the unfinished Mission (does not invent a new one)")
+    p.add_argument("target", help="Clank slug or Mission id")
+    p.set_defaults(func=cmd_work_resume)
+    p = wsub.add_parser("env", help="validate exported Session context; fail loudly if stale")
+    p.set_defaults(func=cmd_work_env)
+
+    p = sub.add_parser("handoff", help="checkpoint, capture git, and pause/block/complete/abandon")
+    p.add_argument("mission")
+    p.add_argument(
+        "--state",
+        default=MissionState.PAUSED,
+        choices=[
+            MissionState.PAUSED,
+            MissionState.BLOCKED,
+            MissionState.COMPLETED,
+            MissionState.ABANDONED,
+        ],
+    )
+    p.add_argument("--completed")
+    p.add_argument("--current")
+    p.add_argument("--next")
+    p.add_argument("--outstanding", help="comma-separated outstanding work")
+    p.add_argument("--blockers", help="comma-separated blocker notes")
+    p.add_argument("--tests")
+    p.add_argument("--branch")
+    p.add_argument("--head")
+    p.add_argument("--working-tree")
+    p.add_argument("--notes")
+    p.set_defaults(func=cmd_handoff)
+
+    p = sub.add_parser("ref", help="add a Clank ref (path, remote) without creating a new identity")
+    rsub = p.add_subparsers(dest="ref_action", required=True)
+    p = rsub.add_parser("add")
+    p.add_argument("clank")
+    p.add_argument("kind")
+    p.add_argument("value")
+    p.add_argument("--canonical", action="store_true")
+    p.set_defaults(func=cmd_ref_add)
+
+    p = sub.add_parser("rel", help="record a relationship between two Clanks")
+    rsub = p.add_subparsers(dest="rel_action", required=True)
+    p = rsub.add_parser("add")
+    p.add_argument("from_clank")
+    p.add_argument("kind")
+    p.add_argument("to_clank")
+    p.set_defaults(func=cmd_rel_add)
 
     p = sub.add_parser("checkpoint", help="record a development checkpoint")
     p.add_argument("mission")

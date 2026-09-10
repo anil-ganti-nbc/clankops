@@ -2,7 +2,7 @@
 
 Development control plane and institutional memory for the Clank ecosystem.
 
-Foundation 0 is the ledger, not the dashboard. Current state is a projection of an append-only event history. The goal is to make it impossible to lose the state, rationale, outstanding work, or next action of any Clank.
+Foundation 1 is live-fleet adoption on top of the Foundation 0.1 ledger. Current state is a projection of an append-only event history. The goal is to make it impossible to lose the state, rationale, outstanding work, or next action of any Clank.
 
 ```text
 clankctl brief oem-radar
@@ -12,7 +12,7 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 0.1. Local-first Python 3.14+ + SQLite. No UI. No production deployment.
+Foundation 1 (adoption). Local-first Python 3.14+ + SQLite. No UI. No production deployment.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 
@@ -44,15 +44,12 @@ clankctl brief oem-radar
 Log work on a Clank:
 
 ```powershell
-clankctl register watch-clank --path C:\Users\anil\Clanks\watch-clank --alias horology
-clankctl mission start watch-clank "Fix specialist lead terminal state"
-clankctl checkpoint COPS-000001 --current "investigating soak reviews" --next "re-run soak with labelled windows" --capture-git
-clankctl task add COPS-000001 "update GGW window docs"
-clankctl decision add COPS-000001 "Keep soak labels preliminary" --why "operator has not ratified promotion"
-clankctl blocker add COPS-000001 "awaiting soak evidence"
-clankctl mission pause COPS-000001
-clankctl brief watch-clank
+python -m clankops --actor cursor brief oem-radar
+python -m clankops --actor cursor work resume oem-radar
+python -m clankops --actor cursor handoff COPS-000003 --state PAUSED --current "..." --next "..." --capture-git
 ```
+
+`work resume` reuses an unfinished Mission. `handoff` is checkpoint + git capture + Mission state in one step. See [Foundation 1](docs/FOUNDATION_1.md).
 
 ## Documentation
 
@@ -60,6 +57,8 @@ clankctl brief watch-clank
 - [Event model](docs/EVENT_MODEL.md)
 - [Census](docs/CLANK_CENSUS.md)
 - [Agent logging contract](docs/AGENT_LOGGING_CONTRACT.md)
+- [Cursor agent contract](docs/CURSOR_AGENT_CONTRACT.md)
+- [Foundation 1 adoption](docs/FOUNDATION_1.md)
 - [Future scope](docs/FUTURE_SCOPE.md)
 
 ## Tests

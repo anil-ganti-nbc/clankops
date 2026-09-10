@@ -133,6 +133,20 @@ def inspect_git(path: str | Path) -> dict[str, Any]:
     code, out, _ = run_git(root, ["worktree", "list", "--porcelain"])
     if code == 0:
         result["worktrees"] = out or None
+    code, out, _ = run_git(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])
+    if code == 0 and out:
+        result["upstream"] = out
+        acode, aout, _ = run_git(root, ["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])
+        if acode == 0 and aout:
+            left, _, right = aout.strip().partition("\t")
+            if not right:
+                left, _, right = aout.strip().partition(" ")
+            try:
+                result["behind"] = int(left)
+                result["ahead"] = int(right)
+            except ValueError:
+                result["behind"] = None
+                result["ahead"] = None
     if result["default_branch"] is None and result["current_branch"] not in {None, "HEAD"}:
         result["default_branch"] = result["current_branch"]
     return result
