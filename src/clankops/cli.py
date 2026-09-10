@@ -768,6 +768,49 @@ def cmd_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reconcile(args: argparse.Namespace) -> int:
+    from clankops.reconcile import reconcile_clank, reconcile_fleet
+
+    if not args.clank and not args.all:
+        raise ValidationError("pass a Clank slug or --all")
+    store = open_readonly_store(args.db)
+    try:
+        if args.all:
+            payload = reconcile_fleet(store, include_github=not args.no_github)
+        else:
+            payload = reconcile_clank(store, args.clank, include_github=not args.no_github)
+    finally:
+        store.conn.close()
+    if args.json:
+        _print("", as_json=True, payload=payload)
+        return 0
+    rows = payload.get("rows") if args.all else [payload]
+    lines = []
+    if args.all:
+        counts = payload.get("counts") or {}
+        lines.append(
+            " ".join(f"{key}={value}" for key, value in counts.items())
+            + " (history not rewritten)"
+        )
+    for row in rows:
+        drift = row.get("drift") or []
+        lines.append(
+            f"{row.get('slug')} [{row.get('status')}] "
+            f"recorded={row.get('recorded', {}).get('branch') or 'unknown'}/"
+            f"{row.get('head_short_recorded') or 'unknown'} "
+            f"LOCAL_GIT={row.get('observed_local', {}).get('branch') or 'unknown'}/"
+            f"{row.get('head_short_local') or 'unknown'} "
+            f"drift={len(drift)}"
+        )
+        for item in drift:
+            lines.append(
+                f"  {item.get('source')} {item.get('field')}: "
+                f"recorded={item.get('recorded')} observed={item.get('observed')}"
+            )
+    _print("\n".join(lines), as_json=False)
+    return 0
+
+
 def _format_session_row(row: dict[str, Any]) -> str:
     anomaly = f" ANOMALY={row['anomaly']}" if row.get("anomaly") else ""
     stale = " [stale]" if row.get("stale") else ""
@@ -839,8 +882,9 @@ def cmd_terminal(args: argparse.Namespace) -> int:
         stale_after=parse_duration(args.stale_after),
     )
     bound = httpd.server_address
+    display_host = f"[{bound[0]}]" if ":" in str(bound[0]) else bound[0]
     _print(
-        f"ClankOps Terminal (read-only) http://{bound[0]}:{bound[1]}/",
+        f"ClankOps Terminal (read-only) http://{display_host}:{bound[1]}/",
         as_json=args.json,
         payload={
             "host": bound[0],
@@ -863,7 +907,7 @@ def cmd_terminal(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="clankctl",
-        description="ClankOps development ledger (Foundation 2)",
+        description="ClankOps development ledger (Foundation 3)",
     )
     parser.add_argument(
         "--db",
@@ -920,6 +964,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="census JSON (default: data/bootstrap/clank_census.json)",
     )
     p.set_defaults(func=cmd_coverage)
+
+    p = sub.add_parser(
+        "reconcile",
+        help="compare live git/GitHub observation to recorded claims (read-only)",
+    )
+    p.add_argument("clank", nargs="?", help="Clank slug or id")
+    p.add_argument("--all", action="store_true", help="every registered Clank")
+    p.add_argument("--no-github", action="store_true", help="skip gh; local git only")
+    p.set_defaults(func=cmd_reconcile)
 
     p = sub.add_parser("terminal", help="read-only localhost Clank Terminal (alpha)")
     p.add_argument("--host", default="127.0.0.1")

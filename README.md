@@ -2,7 +2,7 @@
 
 Development control plane and institutional memory for the Clank ecosystem.
 
-Foundation 2 is fleet coverage plus a read-only Terminal alpha on top of the Foundation 1 ledger. Current state is a projection of an append-only event history. The goal is to make it impossible to lose the state, rationale, outstanding work, or next action of any Clank.
+Foundation 3 observes live git and GitHub and compares that to recorded agent claims. Drift is visible; history is not rewritten.
 
 ```text
 clankctl brief oem-radar
@@ -12,7 +12,7 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 2 (fleet coverage + Terminal alpha). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment.
+Foundation 3 (git/GitHub evidence reconciliation). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 
@@ -58,6 +58,7 @@ python -m clankops --actor cursor fleet-adopt-verified --file data\bootstrap\cla
 python -m clankops --json coverage
 python -m clankops --json sessions open
 python -m clankops --json sessions stale --older-than 24h
+python -m clankops --json reconcile clankops
 python -m clankops terminal
 ```
 
@@ -72,6 +73,7 @@ The Terminal is localhost-only and read-only. It does not schedule collection or
 - [Cursor agent contract](docs/CURSOR_AGENT_CONTRACT.md)
 - [Foundation 1 adoption](docs/FOUNDATION_1.md)
 - [Foundation 2 fleet + Terminal](docs/FOUNDATION_2.md)
+- [Foundation 3 git/GitHub reconciliation](docs/FOUNDATION_3.md)
 - [Future scope](docs/FUTURE_SCOPE.md)
 
 ## Tests

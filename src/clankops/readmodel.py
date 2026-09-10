@@ -7,6 +7,7 @@ from typing import Any
 
 from clankops.enums import CensusClassification, MissionState
 from clankops.events import list_events
+from clankops.reconcile import reconcile_clank
 from clankops.store import Store
 from clankops.timefmt import format_age, parse_utc, short_head
 
@@ -244,6 +245,9 @@ def fleet_home(
     census: dict[str, Any] | None = None,
     now: datetime | None = None,
     stale_after: timedelta = DEFAULT_STALE,
+    include_github: bool = False,
+    inspect_local=None,
+    inspect_remote=None,
 ) -> dict[str, Any]:
     instant = _now(store, now)
     open_rows = open_sessions(store, now=instant, stale_after=stale_after)
@@ -273,6 +277,13 @@ def fleet_home(
         last_ts = parse_utc(last_event["ts_utc"]) if last_event else None
         since = (instant - last_ts) if last_ts else None
         state = mission["state"] if mission else None
+        rec = reconcile_clank(
+            store,
+            clank["slug"],
+            include_github=include_github,
+            inspect_local=inspect_local,
+            inspect_remote=inspect_remote,
+        )
         table.append(
             {
                 "clank_id": clank["clank_id"],
@@ -296,6 +307,11 @@ def fleet_home(
                 "next_action": checkpoint.get("next_action") if checkpoint else None,
                 "age_since_last_event": format_age(since),
                 "last_event_utc": last_event["ts_utc"] if last_event else None,
+                "reconcile_status": rec["status"],
+                "drift": rec["drift"],
+                "observed_branch": rec["observed_local"].get("branch"),
+                "observed_head_short": rec["head_short_local"],
+                "observed_working_tree": rec["observed_local"].get("working_tree"),
             }
         )
     table.sort(
@@ -317,6 +333,8 @@ def fleet_home(
         "verified_registered": coverage["verified_registered"] if coverage else None,
         "verified_unresolved_count": coverage["verified_unresolved_count"] if coverage else None,
         "anomalies": len(session_anomalies(store, now=instant, stale_after=stale_after)),
+        "git_drift": sum(1 for row in table if row.get("reconcile_status") == "drift"),
+        "git_aligned": sum(1 for row in table if row.get("reconcile_status") == "aligned"),
     }
     return {"summary": summary, "coverage": coverage, "rows": table, "open_sessions": open_rows}
 
@@ -354,7 +372,16 @@ def provenance_labels(event: Any) -> list[str]:
     return labels
 
 
-def dossier(store: Store, clank: str, *, now: datetime | None = None, stale_after: timedelta = DEFAULT_STALE) -> dict[str, Any]:
+def dossier(
+    store: Store,
+    clank: str,
+    *,
+    now: datetime | None = None,
+    stale_after: timedelta = DEFAULT_STALE,
+    include_github: bool = True,
+    inspect_local=None,
+    inspect_remote=None,
+) -> dict[str, Any]:
     detail = store.clank_detail(clank)
     brief = store.brief(clank)
     instant = _now(store, now)
@@ -407,10 +434,18 @@ def dossier(store: Store, clank: str, *, now: datetime | None = None, stale_afte
         "outstanding_tasks": brief.get("outstanding_tasks") or [],
         "next_action": brief.get("next_action"),
     }
+    rec = reconcile_clank(
+        store,
+        detail["slug"],
+        include_github=include_github,
+        inspect_local=inspect_local,
+        inspect_remote=inspect_remote,
+    )
     return {
         "identity": brief["identity"],
         "lifecycle_state": brief.get("lifecycle_state"),
         "now": now_block,
+        "reconcile": rec,
         "timeline": timeline,
         "missions": detail.get("missions") or [],
         "features": detail.get("features") or [],
