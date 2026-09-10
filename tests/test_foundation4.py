@@ -181,6 +181,186 @@ def test_inspect_preserves_total_count_and_paginates(monkeypatch) -> None:
     assert any("page=2" in item for item in pages)
 
 
+def test_truncated_status_contexts_without_aggregate_are_not_success() -> None:
+    contexts = [{"context": f"c{i}", "state": "success"} for i in range(30)]
+    assert (
+        rollup_ci_state(
+            [],
+            contexts=contexts,
+            status_total=31,
+            statuses_observed=True,
+        )
+        != "success"
+    )
+    assert (
+        rollup_ci_state(
+            [],
+            contexts=contexts,
+            status_total=31,
+            statuses_observed=True,
+        )
+        == "unknown"
+    )
+
+
+def test_truncated_status_contexts_with_aggregate_failure_are_failure() -> None:
+    contexts = [{"context": f"c{i}", "state": "success"} for i in range(30)]
+    assert (
+        rollup_ci_state(
+            [],
+            contexts=contexts,
+            status_total=31,
+            combined_state="failure",
+            statuses_observed=True,
+        )
+        == "failure"
+    )
+
+
+def test_truncated_status_contexts_with_aggregate_pending_are_pending() -> None:
+    contexts = [{"context": f"c{i}", "state": "success"} for i in range(30)]
+    assert (
+        rollup_ci_state(
+            [],
+            contexts=contexts,
+            status_total=31,
+            combined_state="pending",
+            statuses_observed=True,
+        )
+        == "pending"
+    )
+
+
+def test_aggregate_success_covers_nonzero_truncated_contexts() -> None:
+    """GitHub combined_state is the documented roll-up of every context.
+
+    When combined_total > 0, that aggregate may prove success even if the
+    detailed statuses page is truncated.
+    """
+    contexts = [{"context": f"c{i}", "state": "success"} for i in range(30)]
+    assert (
+        rollup_ci_state(
+            [],
+            contexts=contexts,
+            status_total=31,
+            combined_state="success",
+            statuses_observed=True,
+        )
+        == "success"
+    )
+
+
+def test_all_status_contexts_fetched_use_unified_rollup() -> None:
+    contexts = [
+        {"context": "ci/one", "state": "success"},
+        {"context": "ci/two", "state": "success"},
+    ]
+    assert (
+        rollup_ci_state(
+            [],
+            contexts=contexts,
+            status_total=2,
+            combined_state="success",
+            statuses_observed=True,
+        )
+        == "success"
+    )
+    assert (
+        rollup_ci_state(
+            [{"status": "completed", "conclusion": "success"}],
+            contexts=[{"context": "ci/two", "state": "failure"}],
+            status_total=1,
+            combined_state="failure",
+            check_run_total=1,
+        )
+        == "failure"
+    )
+
+
+def test_zero_status_contexts_and_one_complete_check_run_is_success() -> None:
+    assert (
+        rollup_ci_state(
+            [{"status": "completed", "conclusion": "success"}],
+            contexts=[],
+            check_run_total=1,
+            status_total=0,
+            combined_state="pending",
+            checks_observed=True,
+            statuses_observed=True,
+        )
+        == "success"
+    )
+
+
+def test_inspect_paginates_status_contexts(monkeypatch) -> None:
+    pages: list[str] = []
+
+    def fake_gh(args):
+        path = str(args[1]) if len(args) > 1 else ""
+        if "check-runs" in path:
+            return 0, json.dumps({"total_count": 0, "check_runs": []}), ""
+        pages.append(path)
+        if "page=2" in path:
+            return (
+                0,
+                json.dumps(
+                    {
+                        "state": "success",
+                        "total_count": 2,
+                        "statuses": [{"context": "ci/two", "state": "success"}],
+                    }
+                ),
+                "",
+            )
+        return (
+            0,
+            json.dumps(
+                {
+                    "state": "success",
+                    "total_count": 2,
+                    "statuses": [{"context": "ci/one", "state": "success"}],
+                }
+            ),
+            "",
+        )
+
+    monkeypatch.setattr("clankops.githubinspect.run_gh", fake_gh)
+    result = inspect_commit_status("anil-ganti-nbc/clankops", HEAD)
+    assert result["status_total"] == 2
+    assert result["combined_total"] == 2
+    assert len(result["contexts"]) == 2
+    assert result["statuses_complete"] is True
+    assert result["state"] == "success"
+    assert any("per_page=100" in item for item in pages)
+    assert any("page=2" in item for item in pages)
+
+
+def test_inspect_truncated_status_contexts_without_aggregate_refuse_success(monkeypatch) -> None:
+    def fake_gh(args):
+        path = str(args[1]) if len(args) > 1 else ""
+        if "check-runs" in path:
+            return 0, json.dumps({"total_count": 0, "check_runs": []}), ""
+        return (
+            0,
+            json.dumps(
+                {
+                    "state": None,
+                    "total_count": 31,
+                    "statuses": [{"context": f"c{i}", "state": "success"} for i in range(30)],
+                }
+            ),
+            "",
+        )
+
+    monkeypatch.setattr("clankops.githubinspect.run_gh", fake_gh)
+    result = inspect_commit_status("anil-ganti-nbc/clankops", HEAD)
+    assert result["status_total"] == 31
+    assert len(result["contexts"]) == 30
+    assert result["statuses_complete"] is False
+    assert result["state"] != "success"
+    assert result["state"] == "unknown"
+
+
 def test_inspect_truncated_check_runs_refuse_success(monkeypatch) -> None:
     run_ok = {
         "id": 1,
@@ -212,7 +392,7 @@ def test_inspect_commit_status_is_get_only(monkeypatch) -> None:
         path = str(args[1]) if len(args) > 1 else ""
         if "check-runs" in path:
             return 0, json.dumps({"total_count": 0, "check_runs": []}), ""
-        if path.endswith("/status"):
+        if path.endswith("/status") or ("/status" in path and "check-runs" not in path):
             return 0, json.dumps({"state": "pending", "total_count": 0, "statuses": []}), ""
         return 1, "", "unexpected"
 
@@ -224,6 +404,8 @@ def test_inspect_commit_status_is_get_only(monkeypatch) -> None:
     assert result["statuses_observed"] is True
     assert result["check_run_total"] == 0
     assert result["checks_complete"] is True
+    assert result["status_total"] == 0
+    assert result["statuses_complete"] is True
     assert result["combined_state"] == "pending"
     assert result["combined_total"] == 0
     assert all(args[0] == "api" for args in calls)

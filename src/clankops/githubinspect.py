@@ -12,6 +12,8 @@ from clankops.enums import EventSource
 GH_TIMEOUT_SEC = 45
 CHECK_RUN_PER_PAGE = 100
 CHECK_RUN_MAX_PAGES = 10
+STATUS_PER_PAGE = 100
+STATUS_MAX_PAGES = 10
 _GITHUB_REPO = re.compile(r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/.]+)", re.I)
 _OWNER_REPO = re.compile(r"^(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+?)(?:\.git)?$", re.I)
 
@@ -200,6 +202,64 @@ def _fetch_check_runs(repo: str, sha: str) -> tuple[bool, list[dict[str, Any]], 
     return observed, runs, total, last_err
 
 
+def _status_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "context": row.get("context"),
+        "state": row.get("state"),
+        "target_url": row.get("target_url"),
+        "description": row.get("description"),
+    }
+
+
+def _fetch_commit_statuses(
+    repo: str, sha: str
+) -> tuple[bool, list[dict[str, Any]], str | None, int | None, str | None]:
+    """GET combined status with per_page=100 and pagination. Never mutates GitHub.
+
+    GitHub ``state`` is the aggregate over every context, even when ``statuses``
+    is a single page. ``total_count`` is how many contexts exist.
+    """
+    contexts: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    total: int | None = None
+    combined_state: str | None = None
+    observed = False
+    last_err: str | None = None
+    for page in range(1, STATUS_MAX_PAGES + 1):
+        ok, payload, err = _gh_json(
+            [
+                "api",
+                f"repos/{repo}/commits/{sha}/status?per_page={STATUS_PER_PAGE}&page={page}",
+            ]
+        )
+        if not ok:
+            last_err = err
+            return observed, contexts, combined_state, total, last_err
+        observed = True
+        if not isinstance(payload, dict):
+            return True, contexts, combined_state, total, "gh api commit status returned invalid JSON"
+        if payload.get("state") is not None:
+            combined_state = payload.get("state")
+        parsed_total = _as_int(payload.get("total_count"))
+        if parsed_total is not None:
+            total = parsed_total
+        added = 0
+        for row in payload.get("statuses") or []:
+            item = _status_row(row)
+            ident = item.get("context")
+            if ident is not None and ident in seen:
+                continue
+            if ident is not None:
+                seen.add(str(ident))
+            contexts.append(item)
+            added += 1
+        if total is not None and len(contexts) >= total:
+            break
+        if added == 0:
+            break
+    return observed, contexts, combined_state, total, last_err
+
+
 def inspect_commit_status(repo: str | None, sha: str | None) -> dict[str, Any]:
     """Observe GitHub check-runs and status contexts for a SHA. GET-only."""
     result: dict[str, Any] = {
@@ -215,6 +275,8 @@ def inspect_commit_status(repo: str | None, sha: str | None) -> dict[str, Any]:
         "statuses_observed": False,
         "check_run_total": None,
         "checks_complete": False,
+        "status_total": None,
+        "statuses_complete": False,
         "combined_state": None,
         "combined_total": None,
     }
@@ -231,26 +293,15 @@ def inspect_commit_status(repo: str | None, sha: str | None) -> dict[str, Any]:
     result["checks_observed"] = checks_ok
     result["checks_complete"] = check_runs_complete(runs, check_run_total, checks_observed=checks_ok)
 
-    status_ok, combined, status_err = _gh_json(["api", f"repos/{repo}/commits/{sha}/status"])
-    contexts = []
-    combined_state = None
-    combined_total = None
-    if status_ok and isinstance(combined, dict):
-        combined_state = combined.get("state")
-        combined_total = combined.get("total_count")
-        for row in combined.get("statuses") or []:
-            contexts.append(
-                {
-                    "context": row.get("context"),
-                    "state": row.get("state"),
-                    "target_url": row.get("target_url"),
-                    "description": row.get("description"),
-                }
-            )
-        result["statuses_observed"] = True
+    status_ok, contexts, combined_state, status_total, status_err = _fetch_commit_statuses(repo, sha)
     result["contexts"] = contexts
     result["combined_state"] = combined_state
-    result["combined_total"] = combined_total
+    result["status_total"] = status_total
+    result["combined_total"] = status_total
+    result["statuses_observed"] = status_ok
+    result["statuses_complete"] = status_contexts_complete(
+        contexts, status_total, statuses_observed=status_ok
+    )
 
     errors = [item for item in (checks_err, status_err) if item]
     result["error"] = "; ".join(errors) if errors else None
@@ -264,6 +315,9 @@ def inspect_commit_status(repo: str | None, sha: str | None) -> dict[str, Any]:
         statuses_observed=result["statuses_observed"],
         check_run_total=check_run_total,
         checks_complete=result["checks_complete"],
+        status_total=status_total,
+        statuses_complete=result["statuses_complete"],
+        combined_state=combined_state,
     )
     return result
 
@@ -313,6 +367,32 @@ def check_runs_complete(
     return len(runs or []) >= total
 
 
+def status_contexts_complete(
+    contexts: list[dict[str, Any]] | None,
+    status_total: int | None,
+    *,
+    statuses_observed: bool = True,
+) -> bool:
+    """True only when GitHub total_count is known and every context was examined."""
+    if not statuses_observed:
+        return False
+    total = _as_int(status_total)
+    if total is None:
+        return False
+    return len(contexts or []) >= total
+
+
+def _aggregate_status_outcome(combined_state: str | None, status_total: int | None) -> str | None:
+    """GitHub combined ``state`` covers every context when total_count > 0.
+
+    Combined pending/success with zero contexts is not evidence.
+    """
+    total = _as_int(status_total) or 0
+    if total <= 0 or not combined_state:
+        return None
+    return _context_outcome({"state": combined_state})
+
+
 def rollup_ci_state(
     runs: list[dict[str, Any]] | None = None,
     *,
@@ -321,6 +401,9 @@ def rollup_ci_state(
     statuses_observed: bool = True,
     check_run_total: int | None = None,
     checks_complete: bool | None = None,
+    status_total: int | None = None,
+    statuses_complete: bool | None = None,
+    combined_state: str | None = None,
 ) -> str:
     """Unified check-run + status-context roll-up.
 
@@ -329,8 +412,10 @@ def rollup_ci_state(
     ``pending``/``success`` with zero contexts is not evidence. If either
     observer is unavailable, empty evidence is ``unknown``, not ``none``.
     Success requires every check-run to be completed **and** the returned
-    set to cover GitHub ``total_count``. An incomplete page cannot mint
-    success; already-observed failure or pending still surface.
+    set to cover GitHub ``total_count``. An incomplete check-run or
+    status-context page cannot mint ``success`` unless GitHub's combined
+    ``state`` independently proves success for ``combined_total > 0``.
+    Already-observed or aggregate failure/pending still surface.
     """
     runs = list(runs or [])
     contexts = list(contexts or [])
@@ -341,16 +426,28 @@ def rollup_ci_state(
             checks_complete = check_runs_complete(
                 runs, check_run_total, checks_observed=checks_observed
             )
+    if statuses_complete is None:
+        if status_total is None:
+            statuses_complete = bool(statuses_observed)
+        else:
+            statuses_complete = status_contexts_complete(
+                contexts, status_total, statuses_observed=statuses_observed
+            )
     outcomes = [_check_run_outcome(run) for run in runs]
     outcomes.extend(_context_outcome(ctx) for ctx in contexts)
-    if "failure" in outcomes:
+    agg = _aggregate_status_outcome(combined_state, status_total)
+    if "failure" in outcomes or agg == "failure":
         return "failure"
-    if "pending" in outcomes:
+    if "pending" in outcomes or agg == "pending":
         return "pending"
     if not checks_complete:
         return "unknown"
+    if not statuses_complete and agg != "success":
+        return "unknown"
     if "unknown" in outcomes:
         return "unknown"
+    if agg == "success" and not outcomes:
+        return "success"
     if any(item == "success" for item in outcomes) and all(
         item in {"success", "neutral"} for item in outcomes
     ):
