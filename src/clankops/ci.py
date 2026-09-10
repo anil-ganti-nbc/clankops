@@ -6,11 +6,12 @@ It does not rewrite checkpoints or git claims.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from clankops.enums import EventSource, MissionState
 from clankops.errors import ValidationError
-from clankops.reconcile import reconcile_clank
+from clankops.githubinspect import inspect_commit_status
+from clankops.reconcile import heads_match, reconcile_clank
 from clankops.store import Store
 
 CI_ARTIFACT_KIND = "github_ci"
@@ -25,6 +26,8 @@ UNFINISHED_MISSION_STATES = frozenset(
 _FAILED = {"failure", "cancelled", "timed_out", "action_required", "error"}
 _TITLE_FAILING_LIMIT = 5
 _TITLE_FAILING_CHARS = 80
+
+InspectChecks = Callable[[str, str], dict[str, Any]]
 
 
 def _run_summary(run: dict[str, Any]) -> dict[str, Any]:
@@ -83,6 +86,10 @@ def _observation_failure_reason(github: dict[str, Any], checks: dict[str, Any]) 
     return str(reason)
 
 
+def _is_detached(branch: str | None) -> bool:
+    return not branch or str(branch).strip() in {"HEAD", "detached"}
+
+
 def _resolve_capture_mission(
     store: Store,
     clank: str,
@@ -117,6 +124,74 @@ def _resolve_capture_mission(
     return unfinished[0]
 
 
+def _attributable_ci_sha(
+    recorded: dict[str, Any],
+    observed_local: dict[str, Any],
+) -> tuple[str | None, str | None]:
+    """SHA explicitly attributable to the selected Mission. Does not guess.
+
+    Recorded checkpoint HEAD wins. Live local HEAD is used only when the
+    Mission has no recorded SHA and the checkout is on the recorded branch.
+    """
+    recorded_head = recorded.get("head")
+    recorded_branch = recorded.get("branch")
+    if recorded_head:
+        return str(recorded_head), "mission_checkpoint"
+    local_ok = bool(observed_local.get("ok"))
+    local_head = observed_local.get("head") if local_ok else None
+    local_branch = observed_local.get("branch") if local_ok else None
+    if (
+        local_head
+        and recorded_branch
+        and not _is_detached(local_branch)
+        and str(local_branch) == str(recorded_branch)
+    ):
+        return str(local_head), "local_head_on_recorded_branch"
+    return None, None
+
+
+def _empty_checks(*, repo: str | None, sha: str | None, error: str) -> dict[str, Any]:
+    return {
+        "source": EventSource.GITHUB,
+        "ok": False,
+        "error": error,
+        "repo": repo,
+        "sha": sha,
+        "state": None,
+        "runs": [],
+        "contexts": [],
+        "checks_observed": False,
+        "statuses_observed": False,
+    }
+
+
+def _observe_mission_checks(
+    repo: str | None,
+    sha: str,
+    *,
+    inspect_checks: InspectChecks | None = None,
+    inspect_remote=None,
+) -> dict[str, Any]:
+    """Observe GitHub CI for a SHA already attributed to the selected Mission."""
+    if not repo:
+        return _empty_checks(repo=repo, sha=sha, error="no GitHub repo")
+    if inspect_checks is not None:
+        payload = inspect_checks(repo, sha) or {}
+        observed_sha = payload.get("sha")
+        if observed_sha and heads_match(observed_sha, sha) is False:
+            return _empty_checks(repo=repo, sha=sha, error="no CI target")
+        if not observed_sha:
+            payload = {**payload, "sha": sha, "repo": payload.get("repo") or repo}
+        return payload
+    if inspect_remote is None:
+        return inspect_commit_status(repo, sha)
+    remote_payload = inspect_remote(repo) or {}
+    checks = remote_payload.get("checks")
+    if checks and heads_match(checks.get("sha"), sha):
+        return checks
+    return _empty_checks(repo=repo, sha=sha, error="no CI target")
+
+
 def capture_ci(
     store: Store,
     clank: str,
@@ -124,42 +199,65 @@ def capture_ci(
     mission: str | None = None,
     inspect_local=None,
     inspect_remote=None,
+    inspect_checks: InspectChecks | None = None,
 ) -> dict[str, Any]:
-    """Observe CI (same as reconcile) and attach it as a Mission artefact."""
+    """Resolve Mission M, observe CI for a SHA attributable to M, then attach."""
+    detail = store.clank_detail(clank)
+    target = _resolve_capture_mission(store, clank, detail["clank_id"], mission)
     rec = reconcile_clank(
         store,
         clank,
         include_github=True,
+        include_ci=False,
         inspect_local=inspect_local,
         inspect_remote=inspect_remote,
+        mission=target["display_id"],
     )
+    recorded = rec.get("recorded") or {}
+    sha, attribution = _attributable_ci_sha(recorded, rec.get("observed_local") or {})
+    if not sha:
+        raise ValidationError(
+            f"no CI target for {target['display_id']}; "
+            "no SHA attributable to that Mission"
+        )
     github = rec.get("observed_github") or {}
-    checks = github.get("checks") or {}
+    repo = github.get("repo") or (rec.get("github_selection") or {}).get("repo")
+    checks = _observe_mission_checks(
+        repo,
+        sha,
+        inspect_checks=inspect_checks,
+        inspect_remote=inspect_remote,
+    )
     if checks.get("state") is None:
         reason = _observation_failure_reason(github, checks)
         raise ValidationError(
             f"no GitHub CI observation to record ({reason}); "
             "a local SHA is not a CI observation"
         )
-    target = _resolve_capture_mission(store, clank, rec["clank_id"], mission)
     runs = [_run_summary(run) for run in (checks.get("runs") or [])]
     contexts = [_context_summary(ctx) for ctx in (checks.get("contexts") or [])]
     failing_runs = _failing_run_names(runs)
     failing_contexts = _failing_context_names(contexts)
     state = checks.get("state")
-    sha = checks.get("sha")
-    title = f"CI {state} {(sha or '')[:7]}"
+    observed_sha = checks.get("sha") or sha
+    title = f"CI {state} {(observed_sha or '')[:7]}"
     title += _title_failing_suffix(failing_runs + failing_contexts)
     row = store.attach_artifact(
         mission=target["display_id"],
         kind=CI_ARTIFACT_KIND,
-        ref=str(sha or "unknown"),
+        ref=str(observed_sha or "unknown"),
         title=title,
         source=EventSource.CI,
         artifact_source=EventSource.CI,
         metadata={
-            "repo": checks.get("repo") or github.get("repo"),
-            "sha": sha,
+            "mission_id": target["mission_id"],
+            "mission_display": target["display_id"],
+            "checkpoint_id": recorded.get("checkpoint_id"),
+            "recorded_branch": recorded.get("branch"),
+            "recorded_sha": recorded.get("head"),
+            "sha": observed_sha,
+            "sha_attribution": attribution,
+            "repo": checks.get("repo") or repo,
             "state": state,
             "error": checks.get("error"),
             "checks_observed": checks.get("checks_observed"),
@@ -179,7 +277,7 @@ def capture_ci(
     return {
         "artifact": row,
         "ci_state": state,
-        "sha": sha,
+        "sha": observed_sha,
         "git_status": rec.get("status"),
         "rewrote_history": False,
         "rewrote_git_claims": False,

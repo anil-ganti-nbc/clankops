@@ -27,13 +27,31 @@ It does **not** use `active_or_unfinished_mission()` (that helper can fall back 
 | any | explicit unfinished Mission on this Clank | attach there |
 | any | explicit Mission on another Clank, or completed / abandoned / superseded | fail |
 
+## SHA binding
+
+`--mission` selects both the artefact destination **and** the CI observation target.
+
+Capture resolves Mission M first, then observes GitHub CI for a SHA attributable to M. It does not use `active_or_unfinished_mission()`, and it does not let the current checkout HEAD override M's recorded HEAD.
+
+| Mission evidence | Live checkout | CI SHA |
+| --- | --- | --- |
+| recorded checkpoint HEAD | anything | that recorded SHA |
+| recorded branch, no HEAD | same branch, not detached | live local HEAD |
+| no attributable SHA | anything else | fail: no CI target; no artefact |
+
+`clankctl reconcile` is unchanged: it still uses the brief helper for recorded claims and may inspect the current checkout. Capture passes an explicit Mission into an internal reconcile path and skips that path's CI inspection (`include_ci=False`).
+
 ## Evidence
 
 A `github_ci` artefact stores normalized Foundation 4 fields, not raw `gh` output and not secrets:
 
 `repo`, `sha`, `state`, `error`, `checks_observed`, `statuses_observed`, `check_run_total`, `checks_complete`, `status_total`, `statuses_complete`, `combined_state`, `runs`, `contexts`, `failing_runs`, `failing_contexts`, `git_status`.
 
-`git_status` is the Foundation 3 reconciliation display value. Capture does not mutate it.
+Binding fields so a later reader can prove the observation belonged to Mission M:
+
+`mission_id`, `mission_display`, `checkpoint_id`, `recorded_branch`, `recorded_sha`, observed CI `sha`, `sha_attribution`.
+
+`git_status` is the Foundation 3 reconciliation display value against **that Mission's** recorded claims. Capture does not mutate it.
 
 A failure produced only by a legacy status context remains auditable from those stored fields.
 

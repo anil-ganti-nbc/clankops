@@ -13,7 +13,7 @@ from clankops.reconcile import reconcile_clank
 from clankops.store import open_store
 from clankops.terminal import _dossier_html
 
-from test_foundation3 import CANON, HEAD, _github, _seed
+from test_foundation3 import CANON, HEAD, OTHER, _github, _local, _seed
 
 import pytest
 
@@ -107,6 +107,10 @@ def test_ci_capture_attaches_artefact_without_rewriting_git_claims(tmp_path: Pat
     assert meta["runs"][0]["name"] == "test"
     assert meta["contexts"] == []
     assert meta["git_status"] == "aligned"
+    assert meta["mission_display"] == result["mission_display"]
+    assert meta["recorded_sha"] == HEAD
+    assert meta["sha"] == HEAD
+    assert meta["sha_attribution"] == "mission_checkpoint"
     rec_after = reconcile_clank(store, "oem-radar", inspect_remote=_remote_with_checks())
     assert rec_after["status"] == rec["status"]
     assert rec_after["comparisons"] == rec["comparisons"]
@@ -286,6 +290,12 @@ def test_ci_capture_explicit_unfinished_mission_succeeds(tmp_path: Path) -> None
     store = open_store(db, actor="cursor")
     _seed(store, remotes=[CANON], branch="main", head=HEAD)
     second = store.start_mission("oem-radar", "second objective")
+    store.record_checkpoint(
+        second["display_id"],
+        branch="main",
+        head=HEAD,
+        source=EventSource.AGENT_REPORT,
+    )
     before = ledger_fingerprint(store)
     result = capture_ci(
         store,
@@ -355,4 +365,194 @@ def test_terminal_shows_ci_artefacts(tmp_path: Path) -> None:
     assert "ARTEFACTS" in html
     assert "github_ci" in html
     assert "CI success" in html
+    store.conn.close()
+
+
+def _checks_payload(sha: str, *, state="success", extras=None) -> dict:
+    return {
+        "source": EventSource.GITHUB,
+        "ok": True,
+        "error": None,
+        "repo": "anil-ganti-nbc/oem-radar",
+        "sha": sha,
+        "state": state,
+        "runs": [
+            {
+                "name": "test",
+                "status": "completed",
+                "conclusion": "success",
+                "html_url": "https://example.test/ci",
+            }
+        ],
+        "contexts": [],
+        "checks_observed": True,
+        "statuses_observed": True,
+        "check_run_total": 1,
+        "checks_complete": True,
+        "status_total": 0,
+        "statuses_complete": True,
+        "combined_state": None,
+        **(extras or {}),
+    }
+
+
+def test_ci_capture_explicit_mission_uses_that_mission_sha_not_local_or_other(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "bind-b.db"
+    store = open_store(db, actor="cursor")
+    path = str(tmp_path / "oem-radar")
+    first = _seed(store, path=path, remotes=[CANON], branch="main", head=HEAD)
+    second = store.start_mission("oem-radar", "feature b")
+    cp = store.record_checkpoint(
+        second["display_id"],
+        branch="feature/b",
+        head=OTHER,
+        source=EventSource.AGENT_REPORT,
+    )
+    requested: list[tuple[str, str]] = []
+
+    def inspect_checks(repo, sha):
+        requested.append((repo, sha))
+        return _checks_payload(sha)
+
+    result = capture_ci(
+        store,
+        "oem-radar",
+        mission=second["display_id"],
+        inspect_local=lambda _path: _local("main", HEAD),
+        inspect_remote=_github(),
+        inspect_checks=inspect_checks,
+    )
+    assert first["display_id"] != second["display_id"]
+    assert requested == [("anil-ganti-nbc/oem-radar", OTHER)]
+    assert result["mission_display"] == second["display_id"]
+    assert result["sha"] == OTHER
+    meta = _meta(result["artifact"])
+    assert meta["mission_id"] == second["mission_id"]
+    assert meta["mission_display"] == second["display_id"]
+    assert meta["checkpoint_id"] == cp["checkpoint_id"]
+    assert meta["recorded_branch"] == "feature/b"
+    assert meta["recorded_sha"] == OTHER
+    assert meta["sha"] == OTHER
+    assert meta["sha_attribution"] == "mission_checkpoint"
+    rec_after = reconcile_clank(
+        store,
+        "oem-radar",
+        inspect_local=lambda _path: _local("main", HEAD),
+        inspect_remote=_github(),
+        mission=second["display_id"],
+        include_ci=False,
+    )
+    assert rec_after["recorded"]["head"] == OTHER
+    store.conn.close()
+
+
+def test_ci_capture_unique_mission_uses_recorded_sha_not_unrelated_local(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "bind-unique.db"
+    store = open_store(db, actor="cursor")
+    mission = _seed(
+        store,
+        path=str(tmp_path / "oem-radar"),
+        remotes=[CANON],
+        branch="feature/b",
+        head=OTHER,
+    )
+    requested: list[str] = []
+
+    def inspect_checks(repo, sha):
+        requested.append(sha)
+        return _checks_payload(sha)
+
+    result = capture_ci(
+        store,
+        "oem-radar",
+        inspect_local=lambda _path: _local("main", HEAD),
+        inspect_remote=_github(),
+        inspect_checks=inspect_checks,
+    )
+    assert requested == [OTHER]
+    assert result["mission_display"] == mission["display_id"]
+    assert result["sha"] == OTHER
+    meta = _meta(result["artifact"])
+    assert meta["recorded_sha"] == OTHER
+    assert meta["sha"] == OTHER
+    assert meta["sha_attribution"] == "mission_checkpoint"
+    store.conn.close()
+
+
+def test_ci_capture_mission_without_attributable_sha_fails(tmp_path: Path) -> None:
+    db = tmp_path / "no-sha.db"
+    store = open_store(db, actor="cursor")
+    mission = _seed(
+        store,
+        path=str(tmp_path / "oem-radar"),
+        remotes=[CANON],
+        branch="feature/b",
+    )
+    before = ledger_fingerprint(store)
+    with pytest.raises(ValidationError, match="no SHA attributable"):
+        capture_ci(
+            store,
+            "oem-radar",
+            mission=mission["display_id"],
+            inspect_local=lambda _path: _local("main", HEAD),
+            inspect_remote=_remote_with_checks(),
+        )
+    assert ledger_fingerprint(store) == before
+    store.conn.close()
+
+
+def test_ci_capture_local_head_only_when_on_recorded_branch(tmp_path: Path) -> None:
+    db = tmp_path / "local-ok.db"
+    store = open_store(db, actor="cursor")
+    mission = _seed(
+        store,
+        path=str(tmp_path / "oem-radar"),
+        remotes=[CANON],
+        branch="feature/b",
+    )
+    requested: list[str] = []
+
+    def inspect_checks(repo, sha):
+        requested.append(sha)
+        return _checks_payload(sha)
+
+    result = capture_ci(
+        store,
+        "oem-radar",
+        mission=mission["display_id"],
+        inspect_local=lambda _path: _local("feature/b", OTHER),
+        inspect_remote=_github(),
+        inspect_checks=inspect_checks,
+    )
+    assert requested == [OTHER]
+    meta = _meta(result["artifact"])
+    assert meta["recorded_sha"] is None
+    assert meta["recorded_branch"] == "feature/b"
+    assert meta["sha"] == OTHER
+    assert meta["sha_attribution"] == "local_head_on_recorded_branch"
+    store.conn.close()
+
+
+def test_reconcile_without_mission_is_unchanged_and_read_only(tmp_path: Path) -> None:
+    db = tmp_path / "recon-default.db"
+    store = open_store(db, actor="cursor")
+    first = _seed(store, remotes=[CANON], branch="main", head=HEAD)
+    second = store.start_mission("oem-radar", "feature b")
+    store.record_checkpoint(
+        second["display_id"],
+        branch="feature/b",
+        head=OTHER,
+        source=EventSource.AGENT_REPORT,
+    )
+    store.pause_mission(second["display_id"])
+    before = ledger_fingerprint(store)
+    rec = reconcile_clank(store, "oem-radar", inspect_remote=_remote_with_checks())
+    assert ledger_fingerprint(store) == before
+    assert rec["mission_display"] == first["display_id"]
+    assert rec["recorded"]["head"] == HEAD
+    assert rec["observed_github"]["checks"]["sha"] == HEAD
     store.conn.close()
