@@ -114,12 +114,94 @@ def test_check_run_completeness_before_success() -> None:
     )
 
 
-def test_all_successful_check_runs_are_success() -> None:
-    runs = [
+def test_truncated_check_run_page_is_not_success() -> None:
+    one_ok = [{"status": "completed", "conclusion": "success"}]
+    assert rollup_ci_state(one_ok, contexts=[], check_run_total=2) != "success"
+    assert rollup_ci_state(one_ok, contexts=[], check_run_total=2) == "unknown"
+
+
+def test_complete_successful_check_run_set_is_success() -> None:
+    two_ok = [
         {"status": "completed", "conclusion": "success"},
         {"status": "completed", "conclusion": "success"},
     ]
-    assert rollup_ci_state(runs, contexts=[]) == "success"
+    assert rollup_ci_state(two_ok, contexts=[], check_run_total=2) == "success"
+
+
+def test_incomplete_page_with_visible_failure_is_failure() -> None:
+    runs = [{"status": "completed", "conclusion": "failure"}]
+    assert rollup_ci_state(runs, contexts=[], check_run_total=2) == "failure"
+
+
+def test_zero_runs_and_empty_status_plane_is_none() -> None:
+    assert (
+        rollup_ci_state(
+            [],
+            contexts=[],
+            check_run_total=0,
+            checks_observed=True,
+            statuses_observed=True,
+        )
+        == "none"
+    )
+
+
+def test_single_successful_run_matching_total_count_is_success() -> None:
+    runs = [{"status": "completed", "conclusion": "success"}]
+    assert rollup_ci_state(runs, contexts=[], check_run_total=1) == "success"
+
+
+def test_inspect_preserves_total_count_and_paginates(monkeypatch) -> None:
+    pages: list[str] = []
+    run_ok = {
+        "id": 1,
+        "name": "test",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://example.test/1",
+    }
+    run_ok2 = {**run_ok, "id": 2, "name": "lint"}
+
+    def fake_gh(args):
+        path = str(args[1]) if len(args) > 1 else ""
+        if "check-runs" in path:
+            pages.append(path)
+            if "page=2" in path:
+                return 0, json.dumps({"total_count": 2, "check_runs": [run_ok2]}), ""
+            return 0, json.dumps({"total_count": 2, "check_runs": [run_ok]}), ""
+        return 0, json.dumps({"state": "pending", "total_count": 0, "statuses": []}), ""
+
+    monkeypatch.setattr("clankops.githubinspect.run_gh", fake_gh)
+    result = inspect_commit_status("anil-ganti-nbc/clankops", HEAD)
+    assert result["check_run_total"] == 2
+    assert len(result["runs"]) == 2
+    assert result["checks_complete"] is True
+    assert result["state"] == "success"
+    assert any("per_page=100" in item for item in pages)
+    assert any("page=2" in item for item in pages)
+
+
+def test_inspect_truncated_check_runs_refuse_success(monkeypatch) -> None:
+    run_ok = {
+        "id": 1,
+        "name": "test",
+        "status": "completed",
+        "conclusion": "success",
+    }
+
+    def fake_gh(args):
+        path = str(args[1]) if len(args) > 1 else ""
+        if "check-runs" in path:
+            return 0, json.dumps({"total_count": 2, "check_runs": [run_ok]}), ""
+        return 0, json.dumps({"state": "pending", "total_count": 0, "statuses": []}), ""
+
+    monkeypatch.setattr("clankops.githubinspect.run_gh", fake_gh)
+    result = inspect_commit_status("anil-ganti-nbc/clankops", HEAD)
+    assert result["check_run_total"] == 2
+    assert len(result["runs"]) == 1
+    assert result["checks_complete"] is False
+    assert result["state"] == "unknown"
+    assert result["state"] != "success"
 
 
 def test_inspect_commit_status_is_get_only(monkeypatch) -> None:
@@ -127,9 +209,10 @@ def test_inspect_commit_status_is_get_only(monkeypatch) -> None:
 
     def fake_gh(args):
         calls.append(args)
-        if args[:1] == ["api"] and str(args[1]).endswith("/check-runs"):
-            return 0, json.dumps({"check_runs": []}), ""
-        if args[:1] == ["api"] and str(args[1]).endswith("/status"):
+        path = str(args[1]) if len(args) > 1 else ""
+        if "check-runs" in path:
+            return 0, json.dumps({"total_count": 0, "check_runs": []}), ""
+        if path.endswith("/status"):
             return 0, json.dumps({"state": "pending", "total_count": 0, "statuses": []}), ""
         return 1, "", "unexpected"
 
@@ -139,16 +222,20 @@ def test_inspect_commit_status_is_get_only(monkeypatch) -> None:
     assert result["state"] == "none"
     assert result["checks_observed"] is True
     assert result["statuses_observed"] is True
+    assert result["check_run_total"] == 0
+    assert result["checks_complete"] is True
     assert result["combined_state"] == "pending"
     assert result["combined_total"] == 0
     assert all(args[0] == "api" for args in calls)
     assert not any("pr" in args for args in calls)
+    assert any("per_page=100" in str(args[1]) for args in calls if len(args) > 1)
 
 
 def test_inspect_commit_status_unavailable_status_is_not_none(monkeypatch) -> None:
     def fake_gh(args):
-        if str(args[1]).endswith("/check-runs"):
-            return 0, json.dumps({"check_runs": []}), ""
+        path = str(args[1]) if len(args) > 1 else ""
+        if "check-runs" in path:
+            return 0, json.dumps({"total_count": 0, "check_runs": []}), ""
         return 1, "", "gh api commit status failed (1)"
 
     monkeypatch.setattr("clankops.githubinspect.run_gh", fake_gh)
