@@ -452,6 +452,13 @@ def dossier(
         "features": detail.get("features") or [],
         "tasks": tasks,
         "decisions": decisions,
+        "artifacts": [
+            dict(r)
+            for r in store.conn.execute(
+                "SELECT * FROM artifacts WHERE clank_id = ? ORDER BY created_utc, artifact_id",
+                (detail["clank_id"],),
+            )
+        ],
         "brief": brief,
     }
 

@@ -17,6 +17,6 @@ Merged Foundation 3 baseline on `main`: `c54387abd9f953fca43a01104ae97665e84e95a
 ## Out of scope
 
 - Auto-updating checkpoints from CI
+- Recording CI into the ledger (Foundation 5)
 - Owning product-Clank CI
 - Collection scheduling
-- Foundation 5

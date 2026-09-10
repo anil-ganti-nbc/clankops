@@ -25,9 +25,10 @@ Ideas noticed during Foundation 0. None of these are implemented. Do not treat t
 
 ## CI integration
 
-- Foundation 4 observes GitHub check-runs / combined status read-only; it does not write them into the ledger
-- Link failing checks to the open Mission without owning CI
-- Ingest pytest/ruff/mypy outcomes as recorded artefacts per SHA
+- Foundation 4 observes GitHub check-runs / combined status read-only
+- Foundation 5 records that observation as a Mission artefact (`clankctl ci capture`); it still does not own CI
+- Auto-updating checkpoints from CI
+- Ingest pytest/ruff/mypy outcomes beyond the GitHub check-run summary
 
 ## Agent integration
 

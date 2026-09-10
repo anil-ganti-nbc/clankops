@@ -814,6 +814,28 @@ def cmd_reconcile(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ci_capture(args: argparse.Namespace) -> int:
+    from clankops.ci import capture_ci
+
+    store = _store(args)
+    try:
+        payload = capture_ci(store, args.clank)
+    finally:
+        store.conn.close()
+    if args.json:
+        _print("", as_json=True, payload=payload)
+        return 0
+    art = payload.get("artifact") or {}
+    _print(
+        f"{payload.get('mission_display')} artefact {art.get('artifact_id')} "
+        f"CI={payload.get('ci_state') or 'unknown'} "
+        f"sha={(payload.get('sha') or '')[:7] or 'unknown'} "
+        f"(git claims not rewritten)",
+        as_json=False,
+    )
+    return 0
+
+
 def _format_session_row(row: dict[str, Any]) -> str:
     anomaly = f" ANOMALY={row['anomaly']}" if row.get("anomaly") else ""
     stale = " [stale]" if row.get("stale") else ""
@@ -976,6 +998,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--all", action="store_true", help="every registered Clank")
     p.add_argument("--no-github", action="store_true", help="skip gh; local git only")
     p.set_defaults(func=cmd_reconcile)
+
+    p = sub.add_parser(
+        "ci",
+        help="record observed GitHub CI as a Mission artefact (write; not reconcile)",
+    )
+    csub = p.add_subparsers(dest="ci_action", required=True)
+    p = csub.add_parser("capture", help="attach current GitHub check-run observation to the unfinished Mission")
+    p.add_argument("clank", help="Clank slug or id")
+    p.set_defaults(func=cmd_ci_capture)
 
     p = sub.add_parser("terminal", help="read-only localhost Clank Terminal (alpha)")
     p.add_argument("--host", default="127.0.0.1")
