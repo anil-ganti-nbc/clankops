@@ -2,7 +2,7 @@
 
 Future Clank-development agents must log through ClankOps so work survives chat expiry, machine restart, and handoff.
 
-Foundation 0 provides the primitives and this contract. It does **not** patch every Clank or inject launcher hooks yet. Humans should not have to type these logs during ordinary development once integration exists; until then, agents must still write them.
+Foundation 0/0.1 provides the primitives and this contract. Foundation 1 injects it into Cursor fleet rules (`Clanks/AGENTS.md` and this repository's `.cursor/rules/clankops-logging.mdc`). It still does **not** patch every Clank repository or collection launcher. Humans should not have to type these logs during ordinary development once launchers pass `CLANKOPS_SESSION_ID`; until then, agents must still write them.
 
 ## Required behaviour
 
@@ -55,9 +55,9 @@ clankctl mission resume <mission> --actor cursor
 
 ## What ClankOps will not do (yet)
 
-- Inject this contract into Cursor/Codex/Claude launchers
+- Auto-start a Session from every dashboard/collection `.cmd` launcher
 - Auto-evaluate agent quality
 - Summarize history with an LLM
-- Modify other Clank repositories to add hooks
+- Modify other Clank repositories to add hooks without an explicit Mission on that Clank
 
-Those belong in later missions. The ledger is ready to receive logs now.
+Cursor fleet logging rules are in place as of Foundation 1. Collection `.cmd` launchers remain manual GUI triggers. The ledger is ready to receive logs now.

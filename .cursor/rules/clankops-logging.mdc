@@ -1,0 +1,16 @@
+---
+description: Log Clank development through ClankOps so work survives chat expiry
+alwaysApply: true
+---
+
+# ClankOps logging
+
+Before changing a Clank, identify it (`clankctl show` / `register`). Open or resume a Mission. Pass `--actor` and bind a Session with `--session` or `CLANKOPS_SESSION_ID`.
+
+Do not reuse a Session from another Mission, Clank, or actor. An invalid supplied Session is a hard error.
+
+Record checkpoints, tasks, decisions, blockers, and features as work happens. Use `--capture-git` when a local repo exists. Dirty trees are evidence; do not clean, stash, or reset them unless the operator asked.
+
+Before stopping: `mission pause|block|complete|abandon`. If the next action is known, put it on the final checkpoint exactly; if unknown, omit it.
+
+Never deploy, never schedule collection, never copy secrets into the ledger.
