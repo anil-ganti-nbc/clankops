@@ -8,7 +8,17 @@ Foundation 0 provides the primitives and this contract. It does **not** patch ev
 
 1. **Identify the Clank before changing it.** `clankctl show <clank>` or `clankctl list`. If missing, `clankctl register` with path and remote. Do not invent a second identity for a rename; add an alias or update a ref.
 2. **Open or resume a Mission.** `clankctl mission start <clank> "<objective>"` or `clankctl mission resume <mission>`. A Mission is a coherent objective, not a chat session. It must survive weeks of inactivity.
-3. **Record the actor/session.** Pass `--actor` (examples: `cursor`, `codex`, `claude`, `glm`, `grok`, `user`). Do not encode vendor lock-in into the schema; actor is a string. `mission start` / `resume` already opens a session.
+3. **Record the actor and Session.** Pass `--actor` (examples: `cursor`, `codex`, `claude`, `glm`, `grok`, `user`). Actor is a string, not a vendor enum. `mission start` / `resume` open a Session and print `session=<uuid>`.
+
+   Attribute later mutations to that Session using **one** of:
+
+   1. `--session <uuid>` on the same `clankctl` invocation
+   2. `CLANKOPS_SESSION_ID` in the environment (preferred for launchers)
+   3. fallback: if this `--actor` has exactly one open Session on the Mission, ClankOps binds it
+
+   If two agents are working the same Mission, each must pass `--session` or its own `CLANKOPS_SESSION_ID`. Do not assume a Mission has a single active Session. If attribution is unknown (reconstructed history), omit the Session; do not invent one.
+
+   End work with `clankctl mission pause|block|complete|abandon` (closes all open Sessions on that Mission) or `clankctl session end <session>` for a single actor.
 4. **Record meaningful checkpoints**, not spam. At minimum: when stopping, when switching branches, after a mergeable unit of work, after tests. Include completed / current / next / outstanding / tests / branch / HEAD / working-tree. Use `--capture-git` when a local repo exists.
 5. **Record new features** when a capability actually appears or is proposed: `clankctl feature add <clank> "<feature>"`.
 6. **Record concrete tasks**, not speculative ideas: `clankctl task add <mission> "<task>"` and `clankctl task done <task>`.
@@ -30,8 +40,9 @@ Foundation 0 provides the primitives and this contract. It does **not** patch ev
 ```text
 clankctl show <clank> || clankctl register <clank> --path <path>
 clankctl mission start <clank> "<objective>" --actor cursor
+# export CLANKOPS_SESSION_ID=<printed session uuid>
 # ... do the work ...
-clankctl checkpoint <mission> --completed "..." --current "..." --next "..." --capture-git --tests "pytest: N passed"
+clankctl --session "$CLANKOPS_SESSION_ID" checkpoint <mission> --completed "..." --current "..." --next "..." --capture-git --tests "pytest: N passed"
 clankctl mission pause <mission>
 ```
 

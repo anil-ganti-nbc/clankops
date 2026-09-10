@@ -27,7 +27,7 @@ ClankOps must not absorb the others. Integration is future work; see [FUTURE_SCO
 
 Boring on purpose:
 
-- Python 3.13+
+- Python 3.14+ (stdlib `uuid.uuid7()`)
 - SQLite in WAL mode
 - SQL migrations in `clankops.schema`
 - Typed-enough domain layer (`clankops.store`)
@@ -46,12 +46,13 @@ clankctl  →  Store  →  events (append-only) + projections
 
 1. **Census** discovers candidates. It never mutates other repositories. Dirty trees are evidence.
 2. **Store** appends an event, then applies it to projection tables in the same transaction.
-3. **Rebuild** deletes projection rows and replays events ordered by `(ts_utc, event_id)`.
+3. **Rebuild** deletes projection rows and replays events ordered by `ledger_seq` (canonical ledger order). Mission display-id allocation is reseeded from `MISSION_CREATED` events.
 
 ## Identifiers
 
-- **Primary keys:** UUIDv7 (time-ordered, stable across rename and move).
-- **Mission display ids:** `COPS-000123` from an `id_sequences` table. Display ids are labels, not keys.
+- **Primary keys:** UUIDv7 (time-ordered, stable across rename and move). Python 3.14+ is required; UUID4 fallback is forbidden.
+- **Event identity vs order:** `event_id` is the durable global identity. `ledger_seq` is the monotonic, immutable order within this SQLite ledger. Timestamps are evidence, not the ordering primitive.
+- **Mission display ids:** `COPS-000123` labels allocated from a sequence that is **reseeded from the event log** on rebuild. A fresh database containing only events cannot reissue an earlier COPS id.
 - Paths, remotes, and GitHub repo names are stored on `clank_refs` and may change.
 
 ## Provenance

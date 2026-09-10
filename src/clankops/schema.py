@@ -191,7 +191,70 @@ CREATE TABLE census_candidates (
     imported_utc TEXT NOT NULL
 );
 """,
-    )
+    ),
+    (
+        2,
+        "foundation01_ledger_seq",
+        """
+DROP TRIGGER IF EXISTS events_no_update;
+DROP TRIGGER IF EXISTS events_no_delete;
+
+CREATE TABLE events_v2 (
+    ledger_seq INTEGER NOT NULL,
+    event_id TEXT PRIMARY KEY,
+    ts_utc TEXT NOT NULL,
+    clank_id TEXT,
+    mission_id TEXT,
+    session_id TEXT,
+    event_type TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    source TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    provenance_json TEXT NOT NULL,
+    schema_version INTEGER NOT NULL,
+    UNIQUE (ledger_seq)
+);
+
+INSERT INTO events_v2 (
+    ledger_seq, event_id, ts_utc, clank_id, mission_id, session_id,
+    event_type, actor, source, payload_json, provenance_json, schema_version
+)
+SELECT
+    ROW_NUMBER() OVER (ORDER BY ts_utc ASC, event_id ASC),
+    event_id, ts_utc, clank_id, mission_id, session_id,
+    event_type, actor, source, payload_json, provenance_json, schema_version
+FROM events;
+
+DROP TABLE events;
+ALTER TABLE events_v2 RENAME TO events;
+
+CREATE INDEX idx_events_clank_ts ON events(clank_id, ts_utc, event_id);
+CREATE INDEX idx_events_mission_ts ON events(mission_id, ts_utc, event_id);
+CREATE INDEX idx_events_type_ts ON events(event_type, ts_utc);
+CREATE INDEX idx_events_ledger_seq ON events(ledger_seq);
+CREATE INDEX idx_events_session ON events(session_id);
+
+CREATE TRIGGER events_no_update BEFORE UPDATE ON events
+BEGIN
+    SELECT RAISE(ABORT, 'events table is append-only');
+END;
+
+CREATE TRIGGER events_no_delete BEFORE DELETE ON events
+BEGIN
+    SELECT RAISE(ABORT, 'events table is append-only');
+END;
+
+CREATE TABLE ledger_head (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    next_seq INTEGER NOT NULL
+);
+
+INSERT INTO ledger_head(id, next_seq)
+SELECT 1, COALESCE(MAX(ledger_seq), 0) + 1 FROM events;
+
+ALTER TABLE checkpoints ADD COLUMN session_id TEXT;
+""",
+    ),
 ]
 
 PROJECTION_TABLES = (

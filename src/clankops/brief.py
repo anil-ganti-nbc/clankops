@@ -95,8 +95,9 @@ def format_history(events: list[Any]) -> str:
         if summary is None:
             summary = json.dumps(payload, sort_keys=True)[:120]
         lines.append(
-            f"{event.ts_utc}  {event.event_type:24}  src={event.source:14}  "
-            f"actor={event.actor}  {summary}"
+            f"#{event.ledger_seq}  {event.ts_utc}  {event.event_type:24}  "
+            f"src={event.source:14}  actor={event.actor}  "
+            f"session={(event.session_id or '-')[:8]}  {summary}"
         )
     if not lines:
         return "No events recorded.\n"

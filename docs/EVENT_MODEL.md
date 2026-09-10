@@ -6,8 +6,9 @@ Storage timestamps are UTC (`YYYY-MM-DDTHH:MM:SS.ffffffZ`). Display may use Asia
 
 | Field | Notes |
 | --- | --- |
-| `event_id` | UUIDv7 |
-| `ts_utc` | When ClankOps recorded the event |
+| `ledger_seq` | Canonical order in this ledger. Assigned at append time, unique, monotonic, immutable. |
+| `event_id` | UUIDv7 durable global identity. Not replaced by `ledger_seq`. |
+| `ts_utc` | When ClankOps recorded the event (evidence, not the ordering primitive) |
 | `clank_id` | Durable Clank id when applicable |
 | `mission_id` | Durable Mission id when applicable |
 | `session_id` | Durable Session id when applicable |
@@ -84,6 +85,23 @@ Artifacts *reference* external systems (commit SHA, PR URL, test run id). They d
 ## Relationships
 
 Recommended kinds: `DEPENDS_ON`, `PROVIDES_TO`, `SUPERSEDES`, `REPLACED_BY`, `SHARES_RUNTIME_WITH`, `GOVERNED_BY`, `DEPLOYED_WITH`, `DUPLICATE_CHECKOUT_OF`, `LOCAL_COPY_OF`. The column is a string; new kinds do not require a migration.
+
+## Event identity vs ledger order
+
+- `event_id` is the globally unique durable identity of an event (UUIDv7). It survives export, copy, and future multi-writer APIs.
+- `ledger_seq` is the canonical order **within this SQLite ledger**. Replay, history, and projections use `ORDER BY ledger_seq`. Two events may share `ts_utc`; their order is still deterministic.
+
+Existing Foundation 0 rows are migrated by assigning `ledger_seq` in the old `(ts_utc, event_id)` order, then freezing that order.
+
+## Session lifecycle
+
+A Session is one actor's continuous period of active work on one Mission.
+
+- Starting or resuming a Mission (to `ACTIVE`) opens a Session.
+- `clankctl session start <mission>` opens another Session for a different actor. A Mission may have multiple open Sessions.
+- A Session ends on explicit `session end`, or when the Mission leaves active work (`PAUSED`, `BLOCKED`, `COMPLETED`, `ABANDONED`, `SUPERSEDED`). All open Sessions on that Mission close. Historical Sessions remain.
+- Duration is `ended_utc - started_utc` when both are known.
+- Mutations during a Session (checkpoints, tasks, features, decisions, blockers, artefacts) carry `session_id` when it can be resolved. Reconstructed events may have none. Attribution is never invented.
 
 ## Projections
 

@@ -14,6 +14,7 @@ from clankops.enums import (
     TASK_TRANSITIONS,
     FEATURE_TRANSITIONS,
     MISSION_TRANSITIONS,
+    MISSION_WORK_STOPPED,
     BlockerState,
     CensusClassification,
     ClankLifecycle,
@@ -26,7 +27,12 @@ from clankops.enums import (
 from clankops.errors import DuplicateError, InvalidTransitionError, NotFoundError, ValidationError
 from clankops.events import Event, append_event, list_events
 from clankops.ids import format_mission_display_id, is_uuid, new_id
-from clankops.projections import apply_event, dump_projection_state, rebuild_projections
+from clankops.projections import (
+    apply_event,
+    dump_projection_state,
+    max_issued_mission_display_n,
+    rebuild_projections,
+)
 
 
 def _slugify(value: str) -> str:
@@ -48,6 +54,7 @@ class Store:
     clock: Clock
     default_actor: str = "user"
     default_source: str = EventSource.USER
+    default_session_id: str | None = None
 
     def commit(self) -> None:
         self.conn.commit()
@@ -63,11 +70,19 @@ class Store:
         mission_id: str | None = None,
         session_id: str | None = None,
         provenance: dict[str, Any] | None = None,
+        bind_session: bool = True,
     ) -> Event:
+        actor = actor or self.default_actor
+        if bind_session and session_id is None:
+            session_id = self.resolve_active_session(
+                mission_id=mission_id,
+                actor=actor,
+                clank_id=clank_id,
+            )
         event = append_event(
             self.conn,
             event_type=event_type,
-            actor=actor or self.default_actor,
+            actor=actor,
             source=source or self.default_source,
             payload=payload,
             provenance=provenance or {"recorder": "clankops.store"},
@@ -173,6 +188,61 @@ class Store:
         if row is None:
             raise NotFoundError(f"blocker not found: {token}")
         return dict(row)
+
+    def resolve_session(self, token: str) -> dict[str, Any]:
+        token = token.strip()
+        row = self.conn.execute(
+            "SELECT * FROM sessions WHERE session_id = ?", (token,)
+        ).fetchone()
+        if row is None and len(token) >= 8:
+            matches = self.conn.execute(
+                "SELECT * FROM sessions WHERE session_id LIKE ?", (token + "%",)
+            ).fetchall()
+            if len(matches) == 1:
+                row = matches[0]
+        if row is None:
+            raise NotFoundError(f"session not found: {token}")
+        return dict(row)
+
+    def resolve_active_session(
+        self,
+        *,
+        mission_id: str | None = None,
+        actor: str | None = None,
+        clank_id: str | None = None,
+        session_id: str | None = None,
+    ) -> str | None:
+        """Bind a session without inventing one.
+
+        Priority: explicit id, store default, unique open session for this
+        actor on this mission. Ambiguous or missing stays unknown.
+        """
+        candidate = session_id or self.default_session_id
+        if candidate:
+            row = self.conn.execute(
+                "SELECT * FROM sessions WHERE session_id = ?", (candidate,)
+            ).fetchone()
+            if row is None:
+                return None
+            if row["ended_utc"]:
+                return None
+            if mission_id and row["mission_id"] != mission_id:
+                return None
+            return row["session_id"]
+        if not mission_id:
+            return None
+        actor = actor or self.default_actor
+        matches = self.conn.execute(
+            """
+            SELECT session_id FROM sessions
+            WHERE mission_id = ? AND actor = ? AND ended_utc IS NULL
+            ORDER BY started_utc, session_id
+            """,
+            (mission_id, actor),
+        ).fetchall()
+        if len(matches) == 1:
+            return matches[0][0]
+        return None
 
     def find_clank_by_remote(self, remote: str) -> dict[str, Any] | None:
         if not remote:
@@ -360,12 +430,16 @@ class Store:
     # --- missions / sessions ---
 
     def _next_display_id(self) -> str:
+        issued = max_issued_mission_display_n(self.conn)
         row = self.conn.execute(
             "SELECT next_value FROM id_sequences WHERE name = 'mission_display'"
         ).fetchone()
-        n = int(row[0])
+        n = max(int(row[0]) if row else 1, issued + 1)
         self.conn.execute(
-            "UPDATE id_sequences SET next_value = ? WHERE name = 'mission_display'",
+            """
+            INSERT INTO id_sequences(name, next_value) VALUES ('mission_display', ?)
+            ON CONFLICT(name) DO UPDATE SET next_value = excluded.next_value
+            """,
             (n + 1,),
         )
         return format_mission_display_id(n)
@@ -384,6 +458,7 @@ class Store:
         clank_row = self.resolve_clank(clank)
         mission_id = new_id()
         display_id = self._next_display_id()
+        actor = actor or self.default_actor
         self._emit(
             EventType.MISSION_CREATED,
             {
@@ -395,19 +470,110 @@ class Store:
             source=source,
             clank_id=clank_row["clank_id"],
             mission_id=mission_id,
+            bind_session=False,
         )
+        session = None
+        if str(state) == MissionState.ACTIVE:
+            session = self.start_session(
+                mission_id, actor=actor, source=source, commit=False
+            )
+        self.commit()
+        result = self.resolve_mission(mission_id)
+        if session:
+            result["session_id"] = session["session_id"]
+        return result
+
+    def start_session(
+        self,
+        mission: str,
+        *,
+        actor: str | None = None,
+        source: str | EventSource | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        row = self.resolve_mission(mission)
+        if row["state"] != MissionState.ACTIVE:
+            raise InvalidTransitionError(
+                f"cannot start a session unless the mission is ACTIVE (now {row['state']})"
+            )
         session_id = new_id()
+        actor = actor or self.default_actor
         self._emit(
             EventType.SESSION_STARTED,
-            {"actor": actor or self.default_actor},
+            {"actor": actor},
             actor=actor,
             source=source,
-            clank_id=clank_row["clank_id"],
-            mission_id=mission_id,
+            clank_id=row["clank_id"],
+            mission_id=row["mission_id"],
             session_id=session_id,
+            bind_session=False,
         )
-        self.commit()
-        return self.resolve_mission(mission_id)
+        if commit:
+            self.commit()
+        return dict(
+            self.conn.execute(
+                "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+        )
+
+    def end_session(
+        self,
+        session: str,
+        *,
+        actor: str | None = None,
+        reason: str | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        row = self.resolve_session(session)
+        if row["ended_utc"]:
+            raise InvalidTransitionError(f"session already ended: {row['session_id']}")
+        self._emit(
+            EventType.SESSION_ENDED,
+            {"reason": reason or "explicit"},
+            actor=actor or self.default_actor,
+            clank_id=row["clank_id"],
+            mission_id=row["mission_id"],
+            session_id=row["session_id"],
+            bind_session=False,
+        )
+        if commit:
+            self.commit()
+        return self.resolve_session(row["session_id"])
+
+    def _end_open_sessions(
+        self,
+        mission_id: str,
+        *,
+        actor: str | None = None,
+        reason: str | None = None,
+    ) -> list[str]:
+        rows = self.conn.execute(
+            """
+            SELECT session_id FROM sessions
+            WHERE mission_id = ? AND ended_utc IS NULL
+            ORDER BY started_utc, session_id
+            """,
+            (mission_id,),
+        ).fetchall()
+        ended: list[str] = []
+        for row in rows:
+            self.end_session(row[0], actor=actor, reason=reason, commit=False)
+            ended.append(row[0])
+        return ended
+
+    def list_sessions(self, mission: str) -> list[dict[str, Any]]:
+        row = self.resolve_mission(mission)
+        return [
+            dict(r)
+            for r in self.conn.execute(
+                """
+                SELECT * FROM sessions
+                WHERE mission_id = ?
+                ORDER BY started_utc, session_id
+                """,
+                (row["mission_id"],),
+            )
+        ]
 
     def transition_mission(
         self,
@@ -425,6 +591,12 @@ class Store:
             raise InvalidTransitionError(
                 f"cannot transition mission {row['display_id']} from {current} to {target}"
             )
+        if target in MISSION_WORK_STOPPED:
+            self._end_open_sessions(
+                row["mission_id"],
+                actor=actor,
+                reason=f"mission_{str(target).lower()}",
+            )
         payload: dict[str, Any] = {
             "from_state": str(current),
             "to_state": str(target),
@@ -439,12 +611,16 @@ class Store:
             actor=actor,
             clank_id=row["clank_id"],
             mission_id=row["mission_id"],
+            bind_session=False,
         )
         self.commit()
         return self.resolve_mission(row["mission_id"])
 
     def pause_mission(self, mission: str, **kwargs: Any) -> dict[str, Any]:
         return self.transition_mission(mission, MissionState.PAUSED, **kwargs)
+
+    def block_mission(self, mission: str, **kwargs: Any) -> dict[str, Any]:
+        return self.transition_mission(mission, MissionState.BLOCKED, **kwargs)
 
     def resume_mission(self, mission: str, **kwargs: Any) -> dict[str, Any]:
         row = self.resolve_mission(mission)
@@ -453,17 +629,12 @@ class Store:
                 f"cannot resume mission {row['display_id']} from {row['state']}"
             )
         result = self.transition_mission(mission, MissionState.ACTIVE, **kwargs)
-        session_id = new_id()
-        actor = kwargs.get("actor")
-        self._emit(
-            EventType.SESSION_STARTED,
-            {"actor": actor or self.default_actor, "reason": "resume"},
-            actor=actor,
-            clank_id=row["clank_id"],
-            mission_id=row["mission_id"],
-            session_id=session_id,
+        session = self.start_session(
+            row["mission_id"],
+            actor=kwargs.get("actor"),
+            source=kwargs.get("source"),
         )
-        self.commit()
+        result["session_id"] = session["session_id"]
         return result
 
     def complete_mission(self, mission: str, **kwargs: Any) -> dict[str, Any]:
@@ -501,6 +672,7 @@ class Store:
         notes: str | None = None,
         actor: str | None = None,
         source: str | EventSource | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         row = self.resolve_mission(mission)
         checkpoint_id = new_id()
@@ -524,6 +696,7 @@ class Store:
             source=source,
             clank_id=row["clank_id"],
             mission_id=row["mission_id"],
+            session_id=session_id,
         )
         self.commit()
         cp = self.conn.execute(
@@ -531,7 +704,9 @@ class Store:
         ).fetchone()
         return {**dict(cp), "event_id": event.event_id}
 
-    def add_task(self, mission: str, title: str, *, actor: str | None = None) -> dict[str, Any]:
+    def add_task(
+        self, mission: str, title: str, *, actor: str | None = None, session_id: str | None = None
+    ) -> dict[str, Any]:
         if not title.strip():
             raise ValidationError("task title is required")
         row = self.resolve_mission(mission)
@@ -542,12 +717,18 @@ class Store:
             actor=actor,
             clank_id=row["clank_id"],
             mission_id=row["mission_id"],
+            session_id=session_id,
         )
         self.commit()
         return self.resolve_task(task_id)
 
     def transition_task(
-        self, task: str, to_state: str | TaskState, *, actor: str | None = None
+        self,
+        task: str,
+        to_state: str | TaskState,
+        *,
+        actor: str | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         row = self.resolve_task(task)
         current = TaskState(row["state"])
@@ -566,6 +747,7 @@ class Store:
             actor=actor,
             clank_id=row["clank_id"],
             mission_id=row["mission_id"],
+            session_id=session_id,
         )
         self.commit()
         return self.resolve_task(row["task_id"])
@@ -577,6 +759,8 @@ class Store:
         *,
         state: str | FeatureState = FeatureState.PRESENT,
         actor: str | None = None,
+        session_id: str | None = None,
+        mission_id: str | None = None,
     ) -> dict[str, Any]:
         if not name.strip():
             raise ValidationError("feature name is required")
@@ -587,12 +771,19 @@ class Store:
             {"feature_id": feature_id, "name": name.strip(), "state": str(state)},
             actor=actor,
             clank_id=clank_row["clank_id"],
+            mission_id=mission_id,
+            session_id=session_id,
         )
         self.commit()
         return self.resolve_feature(feature_id)
 
     def transition_feature(
-        self, feature: str, to_state: str | FeatureState, *, actor: str | None = None
+        self,
+        feature: str,
+        to_state: str | FeatureState,
+        *,
+        actor: str | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         row = self.resolve_feature(feature)
         current = FeatureState(row["state"])
@@ -610,6 +801,7 @@ class Store:
             },
             actor=actor,
             clank_id=row["clank_id"],
+            session_id=session_id,
         )
         self.commit()
         return self.resolve_feature(row["feature_id"])
@@ -622,6 +814,7 @@ class Store:
         why: str | None = None,
         alternatives: str | None = None,
         actor: str | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         if not statement.strip():
             raise ValidationError("decision statement is required")
@@ -638,6 +831,7 @@ class Store:
             actor=actor,
             clank_id=row["clank_id"],
             mission_id=row["mission_id"],
+            session_id=session_id,
         )
         self.commit()
         return dict(
@@ -647,7 +841,12 @@ class Store:
         )
 
     def add_blocker(
-        self, mission: str, description: str, *, actor: str | None = None
+        self,
+        mission: str,
+        description: str,
+        *,
+        actor: str | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         if not description.strip():
             raise ValidationError("blocker description is required")
@@ -659,12 +858,18 @@ class Store:
             actor=actor,
             clank_id=row["clank_id"],
             mission_id=row["mission_id"],
+            session_id=session_id,
         )
         self.commit()
         return self.resolve_blocker(blocker_id)
 
     def resolve_open_blocker(
-        self, blocker: str, *, resolution: str | None = None, actor: str | None = None
+        self,
+        blocker: str,
+        *,
+        resolution: str | None = None,
+        actor: str | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         row = self.resolve_blocker(blocker)
         if row["state"] != BlockerState.OPEN:
@@ -675,6 +880,7 @@ class Store:
             actor=actor,
             clank_id=row["clank_id"],
             mission_id=row["mission_id"],
+            session_id=session_id,
         )
         self.commit()
         return self.resolve_blocker(row["blocker_id"])
@@ -726,6 +932,7 @@ class Store:
         metadata: dict[str, Any] | None = None,
         actor: str | None = None,
         source: str | EventSource | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         clank_id = None
         mission_id = None
@@ -750,6 +957,7 @@ class Store:
             source=source,
             clank_id=clank_id,
             mission_id=mission_id,
+            session_id=session_id,
         )
         self.commit()
         return dict(
@@ -1002,9 +1210,22 @@ class Store:
         return dump_projection_state(self.conn)
 
 
-def open_store(path: str | Path, *, actor: str = "user", source: str = EventSource.USER, clock: Clock | None = None) -> Store:
+def open_store(
+    path: str | Path,
+    *,
+    actor: str = "user",
+    source: str = EventSource.USER,
+    clock: Clock | None = None,
+    session_id: str | None = None,
+) -> Store:
     from clankops.db import connect
 
     clock = clock or SystemClock()
     conn = connect(path, clock=clock)
-    return Store(conn=conn, clock=clock, default_actor=actor, default_source=source)
+    return Store(
+        conn=conn,
+        clock=clock,
+        default_actor=actor,
+        default_source=source,
+        default_session_id=session_id,
+    )

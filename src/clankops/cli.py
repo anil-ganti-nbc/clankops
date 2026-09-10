@@ -32,7 +32,10 @@ def _print(text: str, *, as_json: bool, payload: Any | None = None) -> None:
 
 
 def _store(args: argparse.Namespace) -> Store:
-    return open_store(args.db, actor=args.actor, source=args.source)
+    session = getattr(args, "session", None) or os.environ.get("CLANKOPS_SESSION_ID") or None
+    if session:
+        session = session.strip() or None
+    return open_store(args.db, actor=args.actor, source=args.source, session_id=session)
 
 
 def _split_csv(value: str | None) -> list[str]:
@@ -170,11 +173,11 @@ def cmd_register(args: argparse.Namespace) -> int:
 def cmd_mission_start(args: argparse.Namespace) -> int:
     store = _store(args)
     row = store.start_mission(args.clank, args.objective, actor=args.actor, source=args.source)
-    _print(
-        f"started {row['display_id']} [{row['state']}] {row['objective']}",
-        as_json=args.json,
-        payload=row,
-    )
+    session = row.get("session_id")
+    msg = f"started {row['display_id']} [{row['state']}] {row['objective']}"
+    if session:
+        msg += f" session={session}"
+    _print(msg, as_json=args.json, payload=row)
     store.conn.close()
     return 0
 
@@ -204,10 +207,13 @@ def cmd_mission_transition(args: argparse.Namespace) -> int:
         row = store.complete_mission(args.mission, actor=args.actor)
     elif action == "abandon":
         row = store.abandon_mission(args.mission, actor=args.actor)
+    elif action == "block":
+        row = store.block_mission(args.mission, actor=args.actor)
     else:
         raise ClankOpsError(f"unknown mission action {action}")
+    extra = f" session={row['session_id']}" if row.get("session_id") else ""
     _print(
-        f"{row['display_id']} -> {row['state']}",
+        f"{row['display_id']} -> {row['state']}{extra}",
         as_json=args.json,
         payload=row,
     )
@@ -323,6 +329,8 @@ def cmd_history(args: argparse.Namespace) -> int:
             "event_type": e.event_type,
             "actor": e.actor,
             "source": e.source,
+            "session_id": e.session_id,
+            "ledger_seq": e.ledger_seq,
             "payload": e.payload,
             "provenance": e.provenance,
         }
@@ -337,6 +345,60 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
     store = _store(args)
     count = store.rebuild()
     _print(f"rebuilt projections from {count} events", as_json=args.json, payload={"events": count})
+    store.conn.close()
+    return 0
+
+
+def cmd_session(args: argparse.Namespace) -> int:
+    store = _store(args)
+    action = args.session_action
+    if action == "start":
+        row = store.start_session(args.mission, actor=args.actor, source=args.source)
+        _print(
+            f"session {row['session_id']} started actor={row['actor']}",
+            as_json=args.json,
+            payload=row,
+        )
+    elif action == "end":
+        row = store.end_session(args.session_id, actor=args.actor, reason=args.reason)
+        _print(
+            f"session {row['session_id']} ended",
+            as_json=args.json,
+            payload=row,
+        )
+    elif action == "list":
+        rows = store.list_sessions(args.mission)
+        if args.json:
+            _print("", as_json=True, payload=rows)
+        else:
+            if not rows:
+                sys.stdout.write("No sessions.\n")
+            for row in rows:
+                end = row["ended_utc"] or "open"
+                sys.stdout.write(
+                    f"{row['session_id']} actor={row['actor']} {row['started_utc']} -> {end}\n"
+                )
+    else:
+        raise ClankOpsError(f"unknown session action {action}")
+    store.conn.close()
+    return 0
+
+
+def cmd_artifact_add(args: argparse.Namespace) -> int:
+    store = _store(args)
+    row = store.attach_artifact(
+        mission=args.mission,
+        kind=args.kind,
+        ref=args.ref,
+        title=args.title,
+        actor=args.actor,
+        source=args.source,
+    )
+    _print(
+        f"artifact {row['artifact_id']} {row['kind']} {row['ref']}",
+        as_json=args.json,
+        payload=row,
+    )
     store.conn.close()
     return 0
 
@@ -367,6 +429,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[s.value for s in EventSource],
     )
     parser.add_argument("--json", action="store_true", help="machine-readable output")
+    parser.add_argument(
+        "--session",
+        default=None,
+        help="Session UUID to attribute mutations (or $CLANKOPS_SESSION_ID)",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("init", help="create or migrate the database")
@@ -409,7 +476,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = msub.add_parser("list")
     p.add_argument("clank")
     p.set_defaults(func=cmd_mission_list)
-    for action in ("pause", "resume", "complete", "abandon"):
+    for action in ("pause", "resume", "complete", "abandon", "block"):
         p = msub.add_parser(action)
         p.add_argument("mission")
         p.set_defaults(func=cmd_mission_transition)
@@ -462,6 +529,28 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("mission")
     p.add_argument("description")
     p.set_defaults(func=cmd_blocker_add)
+
+    sess = sub.add_parser("session", help="session commands")
+    ssub = sess.add_subparsers(dest="session_action", required=True)
+    p = ssub.add_parser("start")
+    p.add_argument("mission")
+    p.set_defaults(func=cmd_session)
+    p = ssub.add_parser("end")
+    p.add_argument("session_id")
+    p.add_argument("--reason")
+    p.set_defaults(func=cmd_session)
+    p = ssub.add_parser("list")
+    p.add_argument("mission")
+    p.set_defaults(func=cmd_session)
+
+    p = sub.add_parser("artifact", help="attach an external artefact")
+    asub = p.add_subparsers(dest="artifact_action", required=True)
+    p = asub.add_parser("add")
+    p.add_argument("mission")
+    p.add_argument("kind")
+    p.add_argument("ref")
+    p.add_argument("--title")
+    p.set_defaults(func=cmd_artifact_add)
 
     p = sub.add_parser("brief", help="resume brief for a Clank")
     p.add_argument("clank")

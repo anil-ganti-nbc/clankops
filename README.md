@@ -12,13 +12,13 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 0. Local-first Python + SQLite. No UI. No production deployment.
+Foundation 0.1. Local-first Python 3.14+ + SQLite. No UI. No production deployment.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 
 ## Install
 
-Python 3.13+. From this repository:
+Python 3.14+. From this repository:
 
 ```powershell
 python -m pip install -e ".[dev]"

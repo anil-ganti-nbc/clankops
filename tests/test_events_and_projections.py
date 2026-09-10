@@ -3,7 +3,7 @@ import sqlite3
 import pytest
 
 from clankops.errors import AppendOnlyViolation
-from clankops.events import assert_append_only, list_events
+from clankops.events import assert_append_only, copy_events, list_events
 from clankops.projections import dump_projection_state, rebuild_projections
 
 
@@ -70,23 +70,11 @@ def test_projection_rebuild_is_deterministic(store) -> None:
 def test_rebuild_from_events_only(tmp_path, store) -> None:
     _populate(store)
     expected = dump_projection_state(store.conn)
-    events = store.conn.execute("SELECT * FROM events ORDER BY ts_utc, event_id").fetchall()
     fresh = tmp_path / "fresh.db"
     from clankops.store import open_store
 
     other = open_store(fresh, actor="tester", clock=store.clock)
-    for row in events:
-        other.conn.execute(
-            """
-            INSERT INTO events (
-                event_id, ts_utc, clank_id, mission_id, session_id,
-                event_type, actor, source, payload_json, provenance_json,
-                schema_version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            tuple(row),
-        )
-    other.conn.commit()
+    copy_events(store.conn, other.conn)
     rebuild_projections(other.conn)
     got = dump_projection_state(other.conn)
     assert got == expected
