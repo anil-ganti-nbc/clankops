@@ -1,4 +1,4 @@
-"""Read-only Clank Terminal (Foundation 2 alpha).
+"""Read-only Clank Terminal (Foundation 3 alpha).
 
 Localhost HTML/JSON over projection tables. No mutations, no scheduler,
 no remote bind by default.
@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from clankops.brief import format_brief
 from clankops.census import load_census
 from clankops.clock import Clock
-from clankops.errors import NotFoundError
+from clankops.errors import NotFoundError, ValidationError
 from clankops.readmodel import (
     DEFAULT_STALE,
     coverage_report,
@@ -33,7 +33,8 @@ from clankops.readmodel import (
     open_sessions,
     stale_sessions,
 )
-from clankops.store import Store, open_readonly_store, open_readonly_store
+from clankops.reconcile import reconcile_clank, reconcile_fleet
+from clankops.store import Store, open_readonly_store
 from clankops.timefmt import parse_duration
 
 DEFAULT_HOST = "127.0.0.1"
@@ -87,13 +88,29 @@ def dispatch(
     older = stale_after
     if query.get("older-than") or query.get("older_than"):
         raw = (query.get("older-than") or query.get("older_than") or [DEFAULT_STALE_LABEL])[0]
-        older = parse_duration(raw)
+        try:
+            older = parse_duration(raw)
+        except ValidationError as exc:
+            return HTTPStatus.BAD_REQUEST, "text/plain; charset=utf-8", f"{exc}\n".encode("utf-8")
+    github_raw = (query.get("github") or [None])[0]
     try:
         if route in {"/", "/fleet"}:
-            home = fleet_home(store, census=census, now=now, stale_after=older)
+            home = fleet_home(
+                store,
+                census=census,
+                now=now,
+                stale_after=older,
+                include_github=github_raw in {"1", "true", "yes"},
+            )
             return HTTPStatus.OK, "text/html; charset=utf-8", _fleet_html(home).encode("utf-8")
         if route == "/api/fleet":
-            home = fleet_home(store, census=census, now=now, stale_after=older)
+            home = fleet_home(
+                store,
+                census=census,
+                now=now,
+                stale_after=older,
+                include_github=github_raw in {"1", "true", "yes"},
+            )
             return HTTPStatus.OK, "application/json; charset=utf-8", _json(home)
         if route == "/api/coverage":
             if census is None:
@@ -115,6 +132,17 @@ def dispatch(
                 "application/json; charset=utf-8",
                 _json(stale_sessions(store, older_than=older, now=now)),
             )
+        if route == "/api/reconcile":
+            return (
+                HTTPStatus.OK,
+                "application/json; charset=utf-8",
+                _json(
+                    reconcile_fleet(
+                        store,
+                        include_github=github_raw in {"1", "true", "yes"},
+                    )
+                ),
+            )
         if route == "/health":
             return (
                 HTTPStatus.OK,
@@ -128,16 +156,43 @@ def dispatch(
                     }
                 ),
             )
+        if route.startswith("/api/clank/") and route.endswith("/reconcile"):
+            slug = unquote(route.removeprefix("/api/clank/").removesuffix("/reconcile").rstrip("/"))
+            return (
+                HTTPStatus.OK,
+                "application/json; charset=utf-8",
+                _json(
+                    reconcile_clank(
+                        store,
+                        slug,
+                        include_github=github_raw not in {"0", "false", "no"},
+                    )
+                ),
+            )
         if route.startswith("/api/clank/"):
             slug = unquote(route.removeprefix("/api/clank/"))
             return (
                 HTTPStatus.OK,
                 "application/json; charset=utf-8",
-                _json(dossier(store, slug, now=now, stale_after=older)),
+                _json(
+                    dossier(
+                        store,
+                        slug,
+                        now=now,
+                        stale_after=older,
+                        include_github=github_raw not in {"0", "false", "no"},
+                    )
+                ),
             )
         if route.startswith("/clank/"):
             slug = unquote(route.removeprefix("/clank/"))
-            payload = dossier(store, slug, now=now, stale_after=older)
+            payload = dossier(
+                store,
+                slug,
+                now=now,
+                stale_after=older,
+                include_github=github_raw not in {"0", "false", "no"},
+            )
             return HTTPStatus.OK, "text/html; charset=utf-8", _dossier_html(payload).encode("utf-8")
     except NotFoundError as exc:
         return HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8", f"{exc}\n".encode("utf-8")
@@ -198,6 +253,14 @@ def _fleet_html(home: dict[str, Any]) -> str:
                 else "unknown"
             ),
         ),
+        (
+            "git evidence",
+            (
+                f"drift {summary.get('git_drift') or 0} · "
+                f"aligned {summary.get('git_aligned') or 0} · "
+                f"partial {summary.get('git_partial') or 0}"
+            ),
+        ),
     ]
     chip_html = "".join(
         f"<div><span class=\"muted\">{html.escape(label)}</span><br><strong>{html.escape(str(value))}</strong></div>"
@@ -230,6 +293,7 @@ def _fleet_html(home: dict[str, Any]) -> str:
         wt = row.get("working_tree")
         wt_mark = _mark(wt) if wt else _mark("unknown")
         next_action = row.get("next_action")
+        rec_status = row.get("reconcile_status") or "unknown"
         cells.append(
             "<tr>"
             f"<td><a href=\"/clank/{slug}\">{slug}</a><br><span class=\"muted\">{html.escape(row.get('display_name') or slug)}</span></td>"
@@ -237,18 +301,19 @@ def _fleet_html(home: dict[str, Any]) -> str:
             f"<td>{state_mark}</td>"
             f"<td>{' '.join(session_bits)}</td>"
             f"<td>{html.escape(_unknown(row.get('latest_checkpoint_utc')))}</td>"
-            f"<td>{html.escape(_unknown(row.get('branch')))}</td>"
-            f"<td>{html.escape(_unknown(row.get('head_short')))}</td>"
+            f"<td>{html.escape(_unknown(row.get('branch')))}<br><span class=\"muted\">live {html.escape(_unknown(row.get('observed_branch')))}</span></td>"
+            f"<td>{html.escape(_unknown(row.get('head_short')))}<br><span class=\"muted\">live {html.escape(_unknown(row.get('observed_head_short')))}</span></td>"
             f"<td>{wt_mark}</td>"
             f"<td>{html.escape(_unknown(next_action))}</td>"
             f"<td>{html.escape(_unknown(row.get('age_since_last_event')))}</td>"
+            f"<td>{_mark(rec_status)}</td>"
             "</tr>"
         )
     table = (
         "<table><thead><tr>"
         "<th>Clank</th><th>Mission</th><th>Mission state</th><th>actor / open Session</th>"
         "<th>last checkpoint</th><th>branch</th><th>HEAD</th><th>working tree</th>"
-        "<th>next action</th><th>age since last event</th>"
+        "<th>next action</th><th>age since last event</th><th>evidence</th>"
         "</tr></thead><tbody>"
         + "".join(cells)
         + "</tbody></table>"
@@ -293,6 +358,75 @@ def _dossier_html(payload: dict[str, Any]) -> str:
   <tr><th>outstanding tasks</th><td>{html.escape('; '.join(t.get('title') or '' for t in (now.get('outstanding_tasks') or [])) or 'none recorded')}</td></tr>
   <tr><th>next action</th><td>{html.escape(_unknown(next_action))}</td></tr>
 </table>
+"""
+    rec = payload.get("reconcile") or {}
+    rec_rows = []
+    for item in rec.get("drift") or []:
+        rec_rows.append(
+            "<tr>"
+            f"<td>{_mark(str(item.get('kind') or 'mismatch'))}</td>"
+            f"<td>{html.escape(_unknown(item.get('field')))}</td>"
+            f"<td>{_mark(str(item.get('source') or ''))}<span class=\"src\"> {html.escape(_unknown(item.get('source')))}</span></td>"
+            f"<td>{html.escape(_unknown(item.get('recorded')))}</td>"
+            f"<td>{html.escape(_unknown(item.get('observed')))}</td>"
+            "</tr>"
+        )
+    local = rec.get("observed_local") or {}
+    github = rec.get("observed_github") or {}
+    recorded = rec.get("recorded") or {}
+    status = rec.get("status") or "unknown"
+    captions = {
+        "aligned": "all comparable recorded claims corroborated",
+        "partial": "some recorded claims corroborated; others unobservable",
+        "no-record": "no recorded Git state to reconcile",
+        "unknown": "recorded state could not be independently verified",
+        "drift": "at least one independently compared fact contradicts the recorded state",
+    }
+    caption = captions.get(status, captions["unknown"])
+    if status == "drift" and rec_rows:
+        result_block = (
+            f"<p class=\"muted\">{html.escape(caption)}</p>"
+            "<table><thead><tr><th>kind</th><th>field</th><th>source</th><th>recorded</th><th>observed</th></tr></thead><tbody>"
+            + "".join(rec_rows)
+            + "</tbody></table>"
+        )
+    else:
+        result_block = f"<p class=\"muted\">{html.escape(caption)}</p>"
+    cmp_rows = []
+    for field, item in (rec.get("comparisons") or {}).items():
+        cmp_rows.append(
+            "<tr>"
+            f"<td>{html.escape(field)}</td>"
+            f"<td>{_mark(str(item.get('status') or 'unknown'))}</td>"
+            f"<td>{_mark(str(item.get('source') or 'none'))}<span class=\"src\"> {html.escape(_unknown(item.get('source')))}</span></td>"
+            f"<td>{html.escape(_unknown(item.get('recorded')))}</td>"
+            f"<td>{html.escape(_unknown(item.get('observed')))}</td>"
+            "</tr>"
+        )
+    cmp_table = (
+        "<table><thead><tr><th>field</th><th>coverage</th><th>source</th><th>recorded</th><th>observed</th></tr></thead><tbody>"
+        + "".join(cmp_rows)
+        + "</tbody></table>"
+        if cmp_rows
+        else ""
+    )
+    github_err = github.get("error") if github else "not requested"
+    prs = github.get("open_prs") if github else []
+    pr_text = ", ".join(
+        f"#{p.get('number')} {p.get('head_ref')} {(p.get('head') or '')[:7]}"
+        for p in (prs or [])
+    ) or "none"
+    reconcile_section = f"""
+<h2>RECONCILIATION</h2>
+<p class="muted">Independent LOCAL_GIT / GITHUB observation vs recorded claims. Observer success is not corroboration. History is not rewritten.</p>
+<table>
+  <tr><th>status</th><td>{_mark(_unknown(status))} {html.escape(caption)}</td></tr>
+  <tr><th>recorded claim</th><td>{html.escape(_unknown(recorded.get('branch')))} / {html.escape(_unknown(recorded.get('head')))} / {html.escape(_unknown(recorded.get('working_tree')))} [{html.escape(_unknown(recorded.get('event_source')))}]</td></tr>
+  <tr><th>LOCAL_GIT</th><td>{_mark('LOCAL_GIT')} {html.escape(_unknown(local.get('branch')))} / {html.escape(_unknown(local.get('head')))} / {html.escape(_unknown(local.get('working_tree')))} {html.escape(local.get('error') or '')}</td></tr>
+  <tr><th>GITHUB</th><td>{_mark('GITHUB')} default {html.escape(_unknown(github.get('default_branch') if github else None))} / {html.escape(_unknown(github.get('default_branch_head') if github else None))} PRs {html.escape(pr_text)} {html.escape(str(github_err or ''))}</td></tr>
+</table>
+{cmp_table}
+{result_block}
 """
     trows = []
     for event in payload.get("timeline") or []:
@@ -344,7 +478,7 @@ def _dossier_html(payload: dict[str, Any]) -> str:
     heading = f"<h1>{html.escape(ident.get('display_name') or ident.get('slug') or '')}</h1>"
     return _page(
         f"{ident.get('slug')} · ClankOps Terminal",
-        heading + now_section + timeline + missions + features + tasks + decisions + brief_pre,
+        heading + now_section + reconcile_section + timeline + missions + features + tasks + decisions + brief_pre,
     )
 
 
