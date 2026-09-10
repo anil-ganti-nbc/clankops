@@ -70,7 +70,7 @@ Every event has `source`:
 | SYSTEM | ClankOps itself |
 | RECONSTRUCTED | Bootstrap / census / inferred history |
 
-Agent statements are not automatically GitHub facts. If an agent reports a push and GitHub cannot corroborate it, the ledger keeps an `AGENT_REPORT` event. It does not rewrite the event as `GITHUB`.
+Agent statements are not automatically GitHub facts. If an agent reports a push and GitHub cannot corroborate it, the ledger keeps an `AGENT_REPORT` event. It does not rewrite the event as `GITHUB`. Local `git` inspection is stored as `git_evidence.source=LOCAL_GIT` on the same checkpoint; it does not convert the surrounding development claims into `LOCAL_GIT`.
 
 Reconstructed census facts must remain `RECONSTRUCTED`. Unknown timestamps stay unknown; event `ts_utc` is when ClankOps recorded the fact, not a fabricated historical time.
 

@@ -158,6 +158,7 @@ def _apply_session_ended(conn: sqlite3.Connection, event: Event) -> None:
 
 def _apply_checkpoint(conn: sqlite3.Connection, event: Event) -> None:
     p = event.payload
+    evidence = p.get("git_evidence") or {}
     conn.execute(
         """
         INSERT INTO checkpoints (
@@ -178,9 +179,9 @@ def _apply_checkpoint(conn: sqlite3.Connection, event: Event) -> None:
             json.dumps(p.get("outstanding") or [], sort_keys=True),
             json.dumps(p.get("blockers") or [], sort_keys=True),
             p.get("tests"),
-            p.get("branch"),
-            p.get("head"),
-            p.get("working_tree"),
+            evidence.get("branch") or p.get("branch"),
+            evidence.get("head") or p.get("head"),
+            evidence.get("working_tree") or p.get("working_tree"),
             json.dumps(p.get("artifacts") or [], sort_keys=True),
             p.get("notes"),
             event.session_id,

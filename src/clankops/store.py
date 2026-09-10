@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -644,6 +645,7 @@ class Store:
         actor: str | None = None,
         superseded_by: str | None = None,
         reason: str | None = None,
+        source: str | EventSource | None = None,
     ) -> dict[str, Any]:
         row = self.resolve_mission(mission)
         current = MissionState(row["state"])
@@ -670,6 +672,7 @@ class Store:
             EventType.MISSION_STATE_CHANGED,
             payload,
             actor=actor,
+            source=source,
             clank_id=row["clank_id"],
             mission_id=row["mission_id"],
             bind_session=False,
@@ -689,11 +692,15 @@ class Store:
             raise InvalidTransitionError(
                 f"cannot resume mission {row['display_id']} from {row['state']}"
             )
-        result = self.transition_mission(mission, MissionState.ACTIVE, **kwargs)
+        actor = kwargs.get("actor")
+        source = kwargs.get("source")
+        result = self.transition_mission(
+            mission, MissionState.ACTIVE, actor=actor, source=source
+        )
         session = self.start_session(
             row["mission_id"],
-            actor=kwargs.get("actor"),
-            source=kwargs.get("source"),
+            actor=actor,
+            source=source,
         )
         result["session_id"] = session["session_id"]
         return result
@@ -729,6 +736,7 @@ class Store:
         branch: str | None = None,
         head: str | None = None,
         working_tree: str | None = None,
+        git_evidence: dict[str, Any] | None = None,
         artifacts: list[dict[str, Any]] | None = None,
         notes: str | None = None,
         actor: str | None = None,
@@ -737,22 +745,30 @@ class Store:
     ) -> dict[str, Any]:
         row = self.resolve_mission(mission)
         checkpoint_id = new_id()
+        evidence = self._normalize_git_evidence(git_evidence)
+        if evidence:
+            branch = evidence.get("branch") or branch
+            head = evidence.get("head") or head
+            working_tree = evidence.get("working_tree") or working_tree
+        payload: dict[str, Any] = {
+            "checkpoint_id": checkpoint_id,
+            "completed": completed,
+            "current_work": current_work,
+            "next_action": next_action,
+            "outstanding": outstanding or [],
+            "blockers": blockers or [],
+            "tests": tests,
+            "branch": branch,
+            "head": head,
+            "working_tree": working_tree,
+            "artifacts": artifacts or [],
+            "notes": notes,
+        }
+        if evidence:
+            payload["git_evidence"] = evidence
         event = self._emit(
             EventType.CHECKPOINT_RECORDED,
-            {
-                "checkpoint_id": checkpoint_id,
-                "completed": completed,
-                "current_work": current_work,
-                "next_action": next_action,
-                "outstanding": outstanding or [],
-                "blockers": blockers or [],
-                "tests": tests,
-                "branch": branch,
-                "head": head,
-                "working_tree": working_tree,
-                "artifacts": artifacts or [],
-                "notes": notes,
-            },
+            payload,
             actor=actor,
             source=source,
             clank_id=row["clank_id"],
@@ -763,7 +779,12 @@ class Store:
         cp = self.conn.execute(
             "SELECT * FROM checkpoints WHERE checkpoint_id = ?", (checkpoint_id,)
         ).fetchone()
-        return {**dict(cp), "event_id": event.event_id}
+        return {
+            **dict(cp),
+            "event_id": event.event_id,
+            "source": event.source,
+            "git_evidence": evidence,
+        }
 
     def add_task(
         self, mission: str, title: str, *, actor: str | None = None, session_id: str | None = None
@@ -1232,7 +1253,7 @@ class Store:
                     (mission["mission_id"],),
                 )
             ]
-        path_ref = next((r for r in detail["refs"] if r["ref_kind"] == "local_path"), None)
+        path_ref = self._preferred_local_path_ref(detail)
         branch = checkpoint["branch"] if checkpoint else None
         head = checkpoint["head"] if checkpoint else None
         tests = checkpoint["tests"] if checkpoint else None
@@ -1271,6 +1292,181 @@ class Store:
 
     def projection_snapshot(self) -> dict[str, list[dict[str, Any]]]:
         return dump_projection_state(self.conn)
+
+    def _preferred_local_path_ref(self, detail: dict[str, Any]) -> dict[str, Any] | None:
+        refs = [r for r in detail.get("refs") or [] if r["ref_kind"] == "local_path"]
+        canon = [r for r in refs if r.get("is_canonical")]
+        return (canon or refs or [None])[0]
+
+    def canonical_local_path(self, token: str) -> str | None:
+        ref = self._preferred_local_path_ref(self.clank_detail(token))
+        return ref["ref_value"] if ref else None
+
+    @staticmethod
+    def _normalize_fs_path(path: str | Path) -> str:
+        p = Path(path).expanduser()
+        try:
+            p = p.resolve()
+        except OSError:
+            p = p.absolute()
+        text = str(p)
+        if os.name == "nt":
+            return os.path.normcase(text)
+        return text
+
+    def _path_covers_workspace(self, registered: str, workspace: str | Path) -> bool:
+        root = self._normalize_fs_path(registered)
+        here = self._normalize_fs_path(workspace)
+        if here == root:
+            return True
+        sep = "\\" if os.name == "nt" else os.sep
+        prefix = root.rstrip("\\/") + sep
+        return here.startswith(prefix)
+
+    def find_clanks_for_path(self, path: str | Path) -> list[dict[str, Any]]:
+        """Clanks whose registered local_path is this workspace or a parent of it."""
+        matches: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for clank in self.list_clanks():
+            detail = self.clank_detail(clank["clank_id"])
+            for ref in detail.get("refs") or []:
+                if ref["ref_kind"] != "local_path":
+                    continue
+                if self._path_covers_workspace(ref["ref_value"], path):
+                    if clank["clank_id"] not in seen:
+                        seen.add(clank["clank_id"])
+                        matches.append(detail)
+                    break
+        return matches
+
+    @staticmethod
+    def _normalize_git_evidence(git_evidence: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not git_evidence:
+            return None
+        source = str(git_evidence.get("source") or EventSource.LOCAL_GIT)
+        if source == EventSource.GITHUB:
+            raise ValidationError(
+                "GitHub facts cannot be manufactured from local git inspection"
+            )
+        if source != EventSource.LOCAL_GIT:
+            raise ValidationError(
+                f"git_evidence.source must be LOCAL_GIT (got {source})"
+            )
+        branch = git_evidence.get("branch")
+        head = git_evidence.get("head")
+        working_tree = git_evidence.get("working_tree")
+        if not any([branch, head, working_tree]):
+            return None
+        return {
+            "source": EventSource.LOCAL_GIT,
+            "branch": branch,
+            "head": head,
+            "working_tree": working_tree,
+        }
+
+    def unfinished_missions(self, clank: str) -> list[dict[str, Any]]:
+        row = self.resolve_clank(clank)
+        return [
+            dict(r)
+            for r in self.conn.execute(
+                """
+                SELECT * FROM missions
+                WHERE clank_id = ?
+                  AND state IN ('PLANNED', 'ACTIVE', 'PAUSED', 'BLOCKED')
+                ORDER BY
+                    CASE state
+                        WHEN 'ACTIVE' THEN 0
+                        WHEN 'BLOCKED' THEN 1
+                        WHEN 'PAUSED' THEN 2
+                        ELSE 3
+                    END,
+                    updated_utc DESC
+                """,
+                (row["clank_id"],),
+            )
+        ]
+
+    def open_work_session(
+        self,
+        mission: str,
+        *,
+        actor: str | None = None,
+        source: str | EventSource | None = None,
+    ) -> dict[str, Any]:
+        """Resume an existing Mission into an open Session for this actor."""
+        row = self.resolve_mission(mission)
+        actor = actor or self.default_actor
+        if row["state"] in {MissionState.COMPLETED, MissionState.ABANDONED, MissionState.SUPERSEDED}:
+            raise InvalidTransitionError(
+                f"mission {row['display_id']} is {row['state']}; start a new Mission instead of resuming"
+            )
+        if row["state"] in {MissionState.PAUSED, MissionState.BLOCKED, MissionState.PLANNED}:
+            result = self.resume_mission(row["mission_id"], actor=actor, source=source)
+            session = self.resolve_session(result["session_id"])
+            return {"mission": result, "session": session}
+        existing = self.resolve_active_session(
+            mission_id=row["mission_id"],
+            actor=actor,
+            clank_id=row["clank_id"],
+        )
+        if existing:
+            session = self.resolve_session(existing)
+        else:
+            session = self.start_session(row["mission_id"], actor=actor, source=source)
+        return {"mission": self.resolve_mission(row["mission_id"]), "session": session}
+
+    def handoff_mission(
+        self,
+        mission: str,
+        to_state: str,
+        *,
+        completed: str | None = None,
+        current_work: str | None = None,
+        next_action: str | None = None,
+        outstanding: list[str] | None = None,
+        blockers: list[str] | None = None,
+        tests: str | None = None,
+        branch: str | None = None,
+        head: str | None = None,
+        working_tree: str | None = None,
+        notes: str | None = None,
+        git_evidence: dict[str, Any] | None = None,
+        actor: str | None = None,
+        source: str | EventSource | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Checkpoint then leave ACTIVE work in an explicit Mission state."""
+        target = str(to_state)
+        if target == MissionState.ACTIVE:
+            raise ValidationError("handoff cannot leave the Mission ACTIVE")
+        checkpoint = self.record_checkpoint(
+            mission,
+            completed=completed,
+            current_work=current_work,
+            next_action=next_action,
+            outstanding=outstanding,
+            blockers=blockers,
+            tests=tests,
+            branch=branch,
+            head=head,
+            working_tree=working_tree,
+            git_evidence=git_evidence,
+            notes=notes,
+            actor=actor,
+            source=source,
+            session_id=session_id,
+        )
+        if target == MissionState.PAUSED:
+            mission_row = self.pause_mission(mission, actor=actor, source=source)
+        elif target == MissionState.BLOCKED:
+            mission_row = self.block_mission(mission, actor=actor, source=source)
+        elif target == MissionState.COMPLETED:
+            mission_row = self.complete_mission(mission, actor=actor, source=source)
+        elif target == MissionState.ABANDONED:
+            mission_row = self.abandon_mission(mission, actor=actor, source=source)
+        else:
+            raise ValidationError(f"unsupported handoff state: {target}")
+        return {"checkpoint": checkpoint, "mission": mission_row}
 
 
 def open_store(

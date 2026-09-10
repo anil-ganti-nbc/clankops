@@ -1,0 +1,14 @@
+---
+description: Mandatory ClankOps logging for Cursor Clank work
+alwaysApply: true
+---
+
+# ClankOps is mandatory
+
+Follow `docs/CURSOR_AGENT_CONTRACT.md` in the clankops repo (shared; do not copy into every Clank).
+
+Before changing a Clank: `python -m clankops --actor cursor brief <clank>`, then `work resume` (or explicit `work start` for a new objective). Export `CLANKOPS_SESSION_ID` from that Session only.
+
+Record checkpoints, tasks, decisions, features, blockers. Use `handoff` before stopping. Never log secrets. Never invent next actions. Dirty trees are evidence.
+
+`work env` must succeed. If it prints `CLANKOPS INTEGRATION FAILED`, recover; do not keep a bad Session. Emergency coding is allowed without a Session, but do not pretend the work was logged.

@@ -14,9 +14,10 @@ FROZEN = datetime(2026, 9, 10, 4, 0, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture(autouse=True)
-def _isolate_clankops_session_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """CLI tests must not inherit the operator's live CLANKOPS_SESSION_ID."""
+def _isolate_clankops_session_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """CLI tests must not inherit the operator's live Session or context files."""
     monkeypatch.delenv("CLANKOPS_SESSION_ID", raising=False)
+    monkeypatch.setenv("CLANKOPS_HOME", str(tmp_path / "clankops-home"))
 
 
 @pytest.fixture
