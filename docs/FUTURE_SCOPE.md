@@ -25,8 +25,9 @@ Ideas noticed during Foundation 0. None of these are implemented. Do not treat t
 
 ## CI integration
 
-- Ingest pytest/ruff/mypy outcomes per SHA
+- Foundation 4 observes GitHub check-runs / combined status read-only; it does not write them into the ledger
 - Link failing checks to the open Mission without owning CI
+- Ingest pytest/ruff/mypy outcomes as recorded artefacts per SHA
 
 ## Agent integration
 

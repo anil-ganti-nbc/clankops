@@ -2,7 +2,7 @@
 
 Development control plane and institutional memory for the Clank ecosystem.
 
-Foundation 3 observes live git and GitHub and compares that to recorded agent claims. Drift is visible; history is not rewritten.
+Foundation 4 observes GitHub commit check-runs as additional evidence. Empty checks are `none`, never success. Git corroboration from Foundation 3 is unchanged.
 
 ```text
 clankctl brief oem-radar
@@ -12,7 +12,7 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 3 (git/GitHub evidence reconciliation). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment.
+Foundation 4 (GitHub commit-status / CI evidence). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 
@@ -74,6 +74,7 @@ The Terminal is localhost-only and read-only. It does not schedule collection or
 - [Foundation 1 adoption](docs/FOUNDATION_1.md)
 - [Foundation 2 fleet + Terminal](docs/FOUNDATION_2.md)
 - [Foundation 3 git/GitHub reconciliation](docs/FOUNDATION_3.md)
+- [Foundation 4 GitHub CI evidence](docs/FOUNDATION_4.md)
 - [Future scope](docs/FUTURE_SCOPE.md)
 
 ## Tests
