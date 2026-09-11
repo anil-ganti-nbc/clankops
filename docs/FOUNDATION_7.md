@@ -60,17 +60,22 @@ and provenance / source plane.
 - Deployment SHA mismatch is **informational**. Wording is
   "deployment differs from recorded Mission HEAD", never "stale",
   "failed", or "outdated deployment".
+- Each current deployment surface is compared only with the Mission named
+  on that observation (`mission_id`). A surface captured for Mission B is
+  never compared with Mission A. Missing `mission_id` is unattributable and
+  produces no mismatch assertion.
 - Multiple Foundation 6 `surface_id`s remain separately attributable.
 - `GIT_DRIFT` names the Foundation 3 contradicted field (`branch` / `head` /
   `working_tree`) and that field's source. It does not always pretend the
   mismatch is HEAD.
-- Mission-scoped CI and deployment items are evaluated for **every**
-  unfinished Mission. Attention never silently selects `unfinished[0]`.
+- Mission-scoped CI items are evaluated for **every** unfinished Mission.
+  Attention never silently selects `unfinished[0]`.
 
 ## Freshness ages
 
-The report exposes ages for latest checkpoint, open Session, CI capture,
+The report exposes ages for latest checkpoint, every open Session, CI capture,
 and deployment observation. Those ages are not hard-coded into verdicts.
+Canonical freshness lists `open_sessions`; it does not pick `open_for[0]`.
 
 Ordering: integrity, then informational, then operator-threshold age items;
 oldest first within a class.

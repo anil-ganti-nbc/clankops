@@ -27,7 +27,7 @@ from clankops.store import open_readonly_store, open_store
 from clankops.terminal import _fleet_html, dispatch
 
 from test_foundation2 import T0
-from test_foundation3 import CANON, HEAD, OTHER, _local, _seed
+from test_foundation3 import CANON, HEAD, OTHER, _github, _local, _seed
 from test_foundation6 import HETZNER_SHA, HETZNER_SURFACE, NAS_SURFACE, _hetzner, _nas
 
 FORBIDDEN_DEPLOY_WORDS = ("deployment is stale", "deployment failed", "outdated deployment")
@@ -456,6 +456,8 @@ def test_freshness_exposes_ages_without_turning_them_into_verdicts(tmp_path: Pat
     assert row["missions"][0]["checkpoint_utc"]
     assert row["missions"][0]["checkpoint_age"]
     assert row["open_session_age"]
+    assert len(row["open_sessions"]) == 1
+    assert row["open_sessions"][0]["session_id"] == row["open_session_id"]
     assert row["missions"][0]["ci_capture_age"]
     assert row["deployments"][0]["age"]
     assert REASON_CI_EVIDENCE_BEHIND_MISSION not in _codes(report)
@@ -637,8 +639,62 @@ def test_each_unfinished_mission_is_evaluated_for_ci(tmp_path: Path) -> None:
     store.conn.close()
 
 
-def test_each_unfinished_mission_is_evaluated_for_deployment(tmp_path: Path) -> None:
-    store = open_store(tmp_path / "multi-dep.db", actor="cursor", clock=FrozenClock(T0))
+def test_github_only_drift_uses_github_provenance(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "gh-drift.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(store, remotes=[CANON], branch="main", head=HEAD)
+    store.record_checkpoint(
+        mission["display_id"],
+        next_action="keep going",
+        branch="main",
+        head=HEAD,
+    )
+    report = attention_report(
+        store,
+        "oem-radar",
+        now=T0,
+        include_github=True,
+        inspect_remote=_github(default_head=OTHER),
+    )
+    items = _of(report, REASON_GIT_DRIFT)
+    assert len(items) == 1
+    assert items[0]["evidence"]["field"] == "head"
+    assert items[0]["source"] == EventSource.GITHUB
+    assert EventSource.GITHUB in items[0]["provenance"]
+    assert EventSource.LOCAL_GIT not in items[0]["provenance"]
+    store.conn.close()
+
+
+def test_multi_field_drift_retains_every_contradicted_field(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "multi-drift.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(
+        store,
+        path=str(tmp_path / "oem-radar"),
+        remotes=[CANON],
+        branch="expansion-handheld-sixunited-m1",
+        head=HEAD,
+        working_tree="clean",
+    )
+    store.record_checkpoint(
+        mission["display_id"],
+        next_action="keep going",
+        branch="expansion-handheld-sixunited-m1",
+        head=HEAD,
+        working_tree="clean",
+    )
+    report = _attn(
+        store,
+        "oem-radar",
+        inspect_local=lambda _path: _local("main", OTHER, dirty=True),
+    )
+    items = _of(report, REASON_GIT_DRIFT)
+    fields = [item["evidence"]["field"] for item in items]
+    assert fields == ["branch", "head", "working_tree"]
+    assert {item["source"] for item in items} == {EventSource.LOCAL_GIT}
+    store.conn.close()
+
+
+def test_deployment_compares_only_the_attributed_mission(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "attr-ok.db", actor="cursor", clock=FrozenClock(T0))
     store.register_clank("oem-radar", remotes=[CANON])
     older = store.start_mission("oem-radar", "first")
     store.record_checkpoint(
@@ -656,10 +712,77 @@ def test_each_unfinished_mission_is_evaluated_for_deployment(tmp_path: Path) -> 
         head=HETZNER_SHA,
     )
     capture_deployment(store, "oem-radar", mission=newer["display_id"], **_hetzner())
-    unfinished = store.unfinished_missions("oem-radar")
-    assert unfinished[0]["display_id"] == newer["display_id"]
+    report = _attn(store, "oem-radar")
+    assert _of(report, REASON_DEPLOYMENT_DIFFERS_FROM_MISSION) == []
+    store.conn.close()
+
+
+def test_deployment_mismatch_names_the_attributed_mission(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "attr-mis.db", actor="cursor", clock=FrozenClock(T0))
+    store.register_clank("oem-radar", remotes=[CANON])
+    older = store.start_mission("oem-radar", "first")
+    store.record_checkpoint(
+        older["display_id"],
+        next_action="first next",
+        branch="main",
+        head=HEAD,
+    )
+    store.pause_mission(older["display_id"])
+    newer = store.start_mission("oem-radar", "second")
+    store.record_checkpoint(
+        newer["display_id"],
+        next_action="second next",
+        branch="main",
+        head=HETZNER_SHA,
+    )
+    capture_deployment(
+        store,
+        "oem-radar",
+        mission=newer["display_id"],
+        **_hetzner(deployed_sha=OTHER),
+    )
     report = _attn(store, "oem-radar")
     items = _of(report, REASON_DEPLOYMENT_DIFFERS_FROM_MISSION)
-    assert [item["mission"] for item in items] == [older["display_id"]]
+    assert len(items) == 1
+    assert items[0]["mission"] == newer["display_id"]
     assert items[0]["evidence"]["surface_id"] == HETZNER_SURFACE
+    assert items[0]["evidence"]["deployed_sha"] == OTHER
+    assert items[0]["evidence"]["recorded_head"] == HETZNER_SHA
+    store.conn.close()
+
+
+def test_unattributable_deployment_emits_no_mismatch(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "unattr.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(store, remotes=[CANON], branch="main", head=HEAD)
+    store.record_checkpoint(
+        mission["display_id"],
+        next_action="keep going",
+        branch="main",
+        head=HEAD,
+    )
+    captured = capture_deployment(store, "oem-radar", **_hetzner())
+    store.conn.execute(
+        "UPDATE deployment_observations SET mission_id = NULL WHERE observation_id = ?",
+        (captured["observation"]["observation_id"],),
+    )
+    store.conn.commit()
+    report = _attn(store, "oem-radar")
+    assert _of(report, REASON_DEPLOYMENT_DIFFERS_FROM_MISSION) == []
+    store.conn.close()
+
+
+def test_freshness_preserves_every_open_session(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "two-sess.db", actor="cursor", clock=FrozenClock(T0))
+    store.register_clank("oem-radar", display_name="OEM Radar")
+    first = store.start_mission("oem-radar", "first")
+    second = store.start_mission("oem-radar", "second")
+    report = _attn(store, "oem-radar")
+    row = report["freshness"][0]
+    ids = [session["session_id"] for session in row["open_sessions"]]
+    assert first["session_id"] in ids
+    assert second["session_id"] in ids
+    assert len(ids) == 2
+    assert len(set(ids)) == 2
+    assert ids == sorted(ids)
+    assert row["open_session_id"] is None
     store.conn.close()

@@ -268,7 +268,7 @@ def _git_drift_items(
                 },
                 suggested_action="Inspect recorded vs observed git claims; reconcile stays read-only",
                 source=source,
-                provenance=[source, str(recorded.get("event_source") or EventSource.AGENT_REPORT)],
+                provenance=[source],
             )
         )
     return items
@@ -358,15 +358,24 @@ def _ci_behind_item(
 def _deployment_differs_items(
     store: Store,
     clank: dict[str, Any],
-    mission: dict[str, Any],
-    checkpoint: dict[str, Any] | None,
     now: datetime,
 ) -> list[dict[str, Any]]:
-    recorded_head = checkpoint.get("head") if checkpoint else None
-    if not recorded_head:
-        return []
+    """Compare each current surface only with the Mission that observation named."""
     items: list[dict[str, Any]] = []
     for row in current_deployments(store, clank["clank_id"], now=now):
+        mission_id = row.get("mission_id")
+        if not mission_id:
+            continue
+        try:
+            mission = store.resolve_mission(mission_id)
+        except NotFoundError:
+            continue
+        if mission.get("clank_id") != clank.get("clank_id"):
+            continue
+        checkpoint = store.latest_checkpoint(clank["clank_id"], mission["mission_id"])
+        recorded_head = checkpoint.get("head") if checkpoint else None
+        if not recorded_head:
+            continue
         deployed = row.get("deployed_sha")
         if not deployed:
             continue
@@ -394,6 +403,7 @@ def _deployment_differs_items(
                     "recorded_head": recorded_head,
                     "host_identity": row.get("host_identity"),
                     "environment": row.get("environment"),
+                    "mission_id": mission["mission_id"],
                 },
                 suggested_action=(
                     "Informational only: deployed SHA differs from recorded Mission HEAD. "
@@ -413,7 +423,19 @@ def _freshness(
     open_for: list[dict[str, Any]],
     now: datetime,
 ) -> dict[str, Any]:
-    session = open_for[0] if open_for else None
+    sessions = [
+        {
+            "session_id": row.get("session_id"),
+            "mission_id": row.get("mission_id"),
+            "mission_display": row.get("mission_display"),
+            "started_utc": row.get("started_utc"),
+            "age": row.get("age"),
+            "age_seconds": row.get("age_seconds"),
+        }
+        for row in open_for
+    ]
+    sessions.sort(key=lambda row: (row.get("started_utc") or "", row.get("session_id") or ""))
+    single = sessions[0] if len(sessions) == 1 else None
     deployments = []
     for row in current_deployments(store, clank["clank_id"], now=now):
         ts = row.get("observed_at") or row.get("created_utc")
@@ -442,9 +464,10 @@ def _freshness(
     return {
         "clank": clank.get("slug"),
         "clank_id": clank.get("clank_id"),
-        "open_session_id": session.get("session_id") if session else None,
-        "open_session_utc": session.get("started_utc") if session else None,
-        "open_session_age": session.get("age") if session else None,
+        "open_sessions": sessions,
+        "open_session_id": single.get("session_id") if single else None,
+        "open_session_utc": single.get("started_utc") if single else None,
+        "open_session_age": single.get("age") if single else None,
         "missions": missions,
         "deployments": deployments,
     }
@@ -502,9 +525,7 @@ def attention_report(
             ci_item = _ci_behind_item(store, clank_row, mission, checkpoint, instant)
             if ci_item:
                 items.append(ci_item)
-            items.extend(
-                _deployment_differs_items(store, clank_row, mission, checkpoint, instant)
-            )
+        items.extend(_deployment_differs_items(store, clank_row, instant))
         items.extend(_git_drift_items(clank_row, rec_mission, rec, instant))
         dirty = _dirty_without_session_item(clank_row, rec_mission, rec, open_for, instant)
         if dirty:
