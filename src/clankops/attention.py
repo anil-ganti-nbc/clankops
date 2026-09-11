@@ -144,16 +144,23 @@ def _sessions_for_clank(open_rows: list[dict[str, Any]], clank_id: str) -> list[
     return [row for row in open_rows if row.get("clank_id") == clank_id]
 
 
-def _resolve_recorded_mission(
-    store: Store, rec: dict[str, Any], unfinished: list[dict[str, Any]]
-) -> dict[str, Any] | None:
+def _mission_from_reconcile(store: Store, rec: dict[str, Any]) -> dict[str, Any] | None:
+    """Mission Foundation 3 actually compared. Never a silent unfinished[0] pick."""
     display = rec.get("mission_display")
-    if display:
-        try:
-            return store.resolve_mission(display)
-        except NotFoundError:
-            pass
-    return unfinished[0] if unfinished else None
+    if not display:
+        return None
+    try:
+        return store.resolve_mission(display)
+    except NotFoundError:
+        return None
+
+
+def _format_drift_value(field: str, value: Any) -> str:
+    if field == "head":
+        return short_head(value) or "unknown"
+    if value is None or value == "":
+        return "unknown"
+    return str(value)
 
 
 def _mission_no_next_action(
@@ -227,44 +234,44 @@ def _stale_session_item(
     )
 
 
-def _git_drift_item(
+def _git_drift_items(
     clank: dict[str, Any],
     mission: dict[str, Any] | None,
     rec: dict[str, Any],
     now: datetime,
-) -> dict[str, Any] | None:
+) -> list[dict[str, Any]]:
     if rec.get("status") != "drift":
-        return None
+        return []
     recorded = rec.get("recorded") or {}
-    local = rec.get("observed_local") or {}
-    rec_head = short_head(recorded.get("head")) or "unknown"
-    obs_head = short_head(local.get("head")) or rec.get("head_short_local") or "unknown"
-    return _item(
-        clank=clank,
-        mission=mission,
-        reason_code=REASON_GIT_DRIFT,
-        reason=f"recorded {rec_head} != observed {obs_head}",
-        item_class=CLASS_INTEGRITY,
-        timestamp=recorded.get("checkpoint_utc"),
-        age=_age(now, recorded.get("checkpoint_utc")),
-        evidence={
-            "checkpoint_id": recorded.get("checkpoint_id"),
-            "recorded_head": recorded.get("head"),
-            "observed_head": local.get("head"),
-            "recorded_branch": recorded.get("branch"),
-            "observed_branch": local.get("branch"),
-            "recorded_working_tree": recorded.get("working_tree"),
-            "observed_working_tree": local.get("working_tree"),
-            "drift": rec.get("drift") or [],
-            "reconcile_status": rec.get("status"),
-        },
-        suggested_action="Inspect recorded vs observed git claims; reconcile stays read-only",
-        source=str(EventSource.LOCAL_GIT),
-        provenance=[
-            str(EventSource.LOCAL_GIT),
-            str(recorded.get("event_source") or EventSource.AGENT_REPORT),
-        ],
-    )
+    items: list[dict[str, Any]] = []
+    for row in rec.get("drift") or []:
+        field = row.get("field") or "unknown"
+        rec_val = _format_drift_value(field, row.get("recorded"))
+        obs_val = _format_drift_value(field, row.get("observed"))
+        source = str(row.get("source") or EventSource.LOCAL_GIT)
+        items.append(
+            _item(
+                clank=clank,
+                mission=mission,
+                reason_code=REASON_GIT_DRIFT,
+                reason=f"recorded {field} {rec_val} != observed {obs_val}",
+                item_class=CLASS_INTEGRITY,
+                timestamp=recorded.get("checkpoint_utc"),
+                age=_age(now, recorded.get("checkpoint_utc")),
+                evidence={
+                    "field": field,
+                    "recorded": row.get("recorded"),
+                    "observed": row.get("observed"),
+                    "source": source,
+                    "checkpoint_id": recorded.get("checkpoint_id"),
+                    "reconcile_status": rec.get("status"),
+                },
+                suggested_action="Inspect recorded vs observed git claims; reconcile stays read-only",
+                source=source,
+                provenance=[source, str(recorded.get("event_source") or EventSource.AGENT_REPORT)],
+            )
+        )
+    return items
 
 
 def _dirty_without_session_item(
@@ -406,11 +413,6 @@ def _freshness(
     open_for: list[dict[str, Any]],
     now: datetime,
 ) -> dict[str, Any]:
-    mission = unfinished[0] if unfinished else None
-    checkpoint = (
-        store.latest_checkpoint(clank["clank_id"], mission["mission_id"]) if mission else None
-    )
-    artefact = _latest_ci_artefact(store, mission["mission_id"]) if mission else None
     session = open_for[0] if open_for else None
     deployments = []
     for row in current_deployments(store, clank["clank_id"], now=now):
@@ -423,17 +425,27 @@ def _freshness(
                 "age": row.get("age") or _age(now, ts),
             }
         )
+    missions = []
+    for mission in unfinished:
+        checkpoint = store.latest_checkpoint(clank["clank_id"], mission["mission_id"])
+        artefact = _latest_ci_artefact(store, mission["mission_id"])
+        missions.append(
+            {
+                "mission": mission["display_id"],
+                "mission_id": mission["mission_id"],
+                "checkpoint_utc": checkpoint.get("recorded_utc") if checkpoint else None,
+                "checkpoint_age": _age(now, checkpoint.get("recorded_utc") if checkpoint else None),
+                "ci_capture_utc": artefact.get("created_utc") if artefact else None,
+                "ci_capture_age": _age(now, artefact.get("created_utc") if artefact else None),
+            }
+        )
     return {
         "clank": clank.get("slug"),
         "clank_id": clank.get("clank_id"),
-        "mission": mission["display_id"] if mission else None,
-        "checkpoint_utc": checkpoint.get("recorded_utc") if checkpoint else None,
-        "checkpoint_age": _age(now, checkpoint.get("recorded_utc") if checkpoint else None),
         "open_session_id": session.get("session_id") if session else None,
         "open_session_utc": session.get("started_utc") if session else None,
         "open_session_age": session.get("age") if session else None,
-        "ci_capture_utc": artefact.get("created_utc") if artefact else None,
-        "ci_capture_age": _age(now, artefact.get("created_utc") if artefact else None),
+        "missions": missions,
         "deployments": deployments,
     }
 
@@ -447,6 +459,7 @@ def _sort_key(item: dict[str, Any]) -> tuple:
         item.get("clank") or "",
         item.get("mission") or "",
         (item.get("evidence") or {}).get("surface_id") or "",
+        (item.get("evidence") or {}).get("field") or "",
     )
 
 
@@ -478,7 +491,7 @@ def attention_report(
             inspect_local=inspect_local,
             inspect_remote=inspect_remote,
         )
-        rec_mission = _resolve_recorded_mission(store, rec, unfinished)
+        rec_mission = _mission_from_reconcile(store, rec)
         open_for = _sessions_for_clank(open_rows, clank_row["clank_id"])
         freshness.append(_freshness(store, clank_row, unfinished, open_for, instant))
         for mission in unfinished:
@@ -486,18 +499,13 @@ def attention_report(
             item = _mission_no_next_action(clank_row, mission, checkpoint, instant)
             if item:
                 items.append(item)
-        primary = unfinished[0] if unfinished else None
-        if primary:
-            checkpoint = store.latest_checkpoint(clank_row["clank_id"], primary["mission_id"])
-            ci_item = _ci_behind_item(store, clank_row, primary, checkpoint, instant)
+            ci_item = _ci_behind_item(store, clank_row, mission, checkpoint, instant)
             if ci_item:
                 items.append(ci_item)
             items.extend(
-                _deployment_differs_items(store, clank_row, primary, checkpoint, instant)
+                _deployment_differs_items(store, clank_row, mission, checkpoint, instant)
             )
-        drift = _git_drift_item(clank_row, rec_mission, rec, instant)
-        if drift:
-            items.append(drift)
+        items.extend(_git_drift_items(clank_row, rec_mission, rec, instant))
         dirty = _dirty_without_session_item(clank_row, rec_mission, rec, open_for, instant)
         if dirty:
             items.append(dirty)
@@ -547,13 +555,14 @@ def format_attention_text(report: dict[str, Any]) -> str:
         evidence = item.get("evidence") or {}
         bits = []
         for key in (
+            "field",
             "checkpoint_id",
             "session_id",
             "artifact_id",
             "observation_id",
             "surface_id",
-            "recorded_head",
-            "observed_head",
+            "recorded",
+            "observed",
             "artefact_sha",
             "deployed_sha",
         ):

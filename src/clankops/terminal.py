@@ -278,8 +278,9 @@ def _attention_html(home: dict[str, Any]) -> str:
             "artifact_id",
             "observation_id",
             "surface_id",
-            "recorded_head",
-            "observed_head",
+            "field",
+            "recorded",
+            "observed",
             "artefact_sha",
             "deployed_sha",
         ):

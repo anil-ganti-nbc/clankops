@@ -28,7 +28,7 @@ from clankops.terminal import _fleet_html, dispatch
 
 from test_foundation2 import T0
 from test_foundation3 import CANON, HEAD, OTHER, _local, _seed
-from test_foundation6 import HETZNER_SURFACE, NAS_SURFACE, _hetzner, _nas
+from test_foundation6 import HETZNER_SHA, HETZNER_SURFACE, NAS_SURFACE, _hetzner, _nas
 
 FORBIDDEN_DEPLOY_WORDS = ("deployment is stale", "deployment failed", "outdated deployment")
 
@@ -164,8 +164,10 @@ def test_git_drift_appears(tmp_path: Path) -> None:
     assert len(items) == 1
     assert "recorded" in items[0]["reason"]
     assert "!=" in items[0]["reason"]
-    assert items[0]["evidence"]["recorded_head"] == HEAD
-    assert items[0]["evidence"]["observed_head"] == OTHER
+    assert items[0]["evidence"]["field"] == "head"
+    assert items[0]["evidence"]["recorded"] == HEAD
+    assert items[0]["evidence"]["observed"] == OTHER
+    assert "head" in items[0]["reason"]
     store.conn.close()
 
 
@@ -450,10 +452,11 @@ def test_freshness_exposes_ages_without_turning_them_into_verdicts(tmp_path: Pat
     report = _attn(store, "oem-radar", now=T0 + timedelta(hours=3))
     assert len(report["freshness"]) == 1
     row = report["freshness"][0]
-    assert row["checkpoint_utc"]
-    assert row["checkpoint_age"]
+    assert len(row["missions"]) == 1
+    assert row["missions"][0]["checkpoint_utc"]
+    assert row["missions"][0]["checkpoint_age"]
     assert row["open_session_age"]
-    assert row["ci_capture_age"]
+    assert row["missions"][0]["ci_capture_age"]
     assert row["deployments"][0]["age"]
     assert REASON_CI_EVIDENCE_BEHIND_MISSION not in _codes(report)
     assert REASON_DEPLOYMENT_DIFFERS_FROM_MISSION not in _codes(report)
@@ -541,4 +544,122 @@ def test_cli_attention_json_and_operator_threshold(tmp_path: Path, capsys) -> No
     assert main(["--db", db, "attention", "--no-github"]) == 0
     store = open_store(db, actor="cursor", clock=FrozenClock(T0))
     assert ledger_fingerprint(store) == before
+    store.conn.close()
+
+
+def test_git_drift_attributes_working_tree_not_head(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "tree-drift.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(
+        store,
+        path=str(tmp_path / "oem-radar"),
+        remotes=[CANON],
+        branch="main",
+        head=HEAD,
+        working_tree="clean",
+    )
+    store.record_checkpoint(
+        mission["display_id"],
+        next_action="keep going",
+        branch="main",
+        head=HEAD,
+        working_tree="clean",
+    )
+    report = _attn(
+        store,
+        "oem-radar",
+        inspect_local=lambda _path: _local("main", HEAD, dirty=True),
+    )
+    items = _of(report, REASON_GIT_DRIFT)
+    assert len(items) == 1
+    assert items[0]["evidence"]["field"] == "working_tree"
+    assert items[0]["source"] == EventSource.LOCAL_GIT
+    assert "working_tree" in items[0]["reason"]
+    assert "head" not in items[0]["reason"]
+    assert HEAD not in items[0]["reason"]
+    store.conn.close()
+
+
+def test_git_drift_attributes_branch_not_head(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "branch-drift.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(
+        store,
+        path=str(tmp_path / "oem-radar"),
+        remotes=[CANON],
+        branch="main",
+        head=HEAD,
+    )
+    store.record_checkpoint(
+        mission["display_id"],
+        next_action="keep going",
+        branch="main",
+        head=HEAD,
+    )
+    report = _attn(
+        store,
+        "oem-radar",
+        inspect_local=lambda _path: _local("feature/x", HEAD, dirty=False),
+    )
+    items = _of(report, REASON_GIT_DRIFT)
+    assert len(items) == 1
+    assert items[0]["evidence"]["field"] == "branch"
+    assert items[0]["evidence"]["recorded"] == "main"
+    assert items[0]["evidence"]["observed"] == "feature/x"
+    assert "branch" in items[0]["reason"]
+    assert "head" not in items[0]["reason"]
+    store.conn.close()
+
+
+def test_each_unfinished_mission_is_evaluated_for_ci(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "multi-ci.db", actor="cursor", clock=FrozenClock(T0))
+    store.register_clank("oem-radar", remotes=[CANON])
+    older = store.start_mission("oem-radar", "first")
+    store.record_checkpoint(
+        older["display_id"],
+        next_action="first next",
+        branch="main",
+        head=HEAD,
+    )
+    _attach_ci(store, older["display_id"], OTHER)
+    store.pause_mission(older["display_id"])
+    newer = store.start_mission("oem-radar", "second")
+    store.record_checkpoint(
+        newer["display_id"],
+        next_action="second next",
+        branch="main",
+        head=HEAD,
+    )
+    _attach_ci(store, newer["display_id"], HEAD)
+    unfinished = store.unfinished_missions("oem-radar")
+    assert unfinished[0]["display_id"] == newer["display_id"]
+    report = _attn(store, "oem-radar")
+    items = _of(report, REASON_CI_EVIDENCE_BEHIND_MISSION)
+    assert [item["mission"] for item in items] == [older["display_id"]]
+    store.conn.close()
+
+
+def test_each_unfinished_mission_is_evaluated_for_deployment(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "multi-dep.db", actor="cursor", clock=FrozenClock(T0))
+    store.register_clank("oem-radar", remotes=[CANON])
+    older = store.start_mission("oem-radar", "first")
+    store.record_checkpoint(
+        older["display_id"],
+        next_action="first next",
+        branch="main",
+        head=HEAD,
+    )
+    store.pause_mission(older["display_id"])
+    newer = store.start_mission("oem-radar", "second")
+    store.record_checkpoint(
+        newer["display_id"],
+        next_action="second next",
+        branch="main",
+        head=HETZNER_SHA,
+    )
+    capture_deployment(store, "oem-radar", mission=newer["display_id"], **_hetzner())
+    unfinished = store.unfinished_missions("oem-radar")
+    assert unfinished[0]["display_id"] == newer["display_id"]
+    report = _attn(store, "oem-radar")
+    items = _of(report, REASON_DEPLOYMENT_DIFFERS_FROM_MISSION)
+    assert [item["mission"] for item in items] == [older["display_id"]]
+    assert items[0]["evidence"]["surface_id"] == HETZNER_SURFACE
     store.conn.close()

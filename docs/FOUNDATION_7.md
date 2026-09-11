@@ -61,6 +61,11 @@ and provenance / source plane.
   "deployment differs from recorded Mission HEAD", never "stale",
   "failed", or "outdated deployment".
 - Multiple Foundation 6 `surface_id`s remain separately attributable.
+- `GIT_DRIFT` names the Foundation 3 contradicted field (`branch` / `head` /
+  `working_tree`) and that field's source. It does not always pretend the
+  mismatch is HEAD.
+- Mission-scoped CI and deployment items are evaluated for **every**
+  unfinished Mission. Attention never silently selects `unfinished[0]`.
 
 ## Freshness ages
 
