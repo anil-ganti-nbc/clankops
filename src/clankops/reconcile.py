@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from clankops.enums import EventSource
+from clankops.errors import ValidationError
 from clankops.events import EVENT_COLUMNS, event_from_row
 from clankops.gitinspect import inspect_git
 from clankops.githubinspect import github_repo_id, inspect_commit_status, inspect_github
@@ -240,22 +241,42 @@ def _matching_prs(observed_github: dict[str, Any] | None, recorded_branch: str |
     ]
 
 
+def _mission_for_reconcile(store: Store, detail: dict[str, Any], mission: str | None) -> dict[str, Any] | None:
+    """Default: brief helper. Explicit mission: that Mission's checkpoint only."""
+    if not mission:
+        return store.active_or_unfinished_mission(detail["clank_id"])
+    row = store.resolve_mission(mission)
+    if row["clank_id"] != detail["clank_id"]:
+        owner = store.clank_detail(row["clank_id"])
+        raise ValidationError(
+            f"mission {row['display_id']} belongs to "
+            f"{owner.get('slug') or row['clank_id']}, not {detail.get('slug')}"
+        )
+    return row
+
+
 def reconcile_clank(
     store: Store,
     clank: str,
     *,
     include_github: bool = True,
+    include_ci: bool = True,
     inspect_local: InspectLocal | None = None,
     inspect_remote: InspectGitHub | None = None,
+    mission: str | None = None,
 ) -> dict[str, Any]:
-    """Live observation vs recorded claims. Does not mutate the ledger."""
+    """Live observation vs recorded claims. Does not mutate the ledger.
+
+    ``clankctl reconcile`` leaves ``mission`` and ``include_ci`` at defaults.
+    Capture may pass an explicit Mission and skip CI inspection.
+    """
     local_fn = inspect_local or (lambda path: inspect_git(path))
     remote_fn = inspect_remote or inspect_github
     detail = store.clank_detail(clank)
-    mission = store.active_or_unfinished_mission(detail["clank_id"])
+    mission_row = _mission_for_reconcile(store, detail, mission)
     checkpoint = None
-    if mission:
-        checkpoint = store.latest_checkpoint(detail["clank_id"], mission["mission_id"])
+    if mission_row:
+        checkpoint = store.latest_checkpoint(detail["clank_id"], mission_row["mission_id"])
     event = _checkpoint_event(store, checkpoint)
     git_evidence = (event.payload or {}).get("git_evidence") if event else None
     if not isinstance(git_evidence, dict):
@@ -337,7 +358,7 @@ def reconcile_clank(
             or recorded.get("head")
             or (observed_github or {}).get("default_branch_head")
         )
-        if observed_github is not None and "checks" not in observed_github:
+        if include_ci and observed_github is not None and "checks" not in observed_github:
             if inspect_remote is None and choice.get("repo"):
                 observed_github["checks"] = inspect_commit_status(choice["repo"], sha)
             else:
@@ -421,7 +442,7 @@ def reconcile_clank(
         "clank_id": detail["clank_id"],
         "slug": detail["slug"],
         "display_name": detail["display_name"],
-        "mission_display": mission["display_id"] if mission else None,
+        "mission_display": mission_row["display_id"] if mission_row else None,
         "status": status,
         "comparisons": comparisons,
         "recorded": recorded,

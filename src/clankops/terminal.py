@@ -482,6 +482,15 @@ def _dossier_html(payload: dict[str, Any]) -> str:
         payload.get("decisions") or [],
         lambda d: html.escape(d.get("statement") or ""),
     )
+    artifacts = _list_block(
+        "ARTEFACTS",
+        payload.get("artifacts") or [],
+        lambda a: (
+            f"{_mark(str(a.get('source') or 'unknown'))} "
+            f"{html.escape(a.get('kind') or '')} "
+            f"{html.escape(a.get('title') or a.get('ref') or '')}"
+        ),
+    )
     brief_pre = (
         "<details><summary class=\"muted\">raw brief (input)</summary>"
         f"<pre>{html.escape(format_brief(payload.get('brief') or payload))}</pre></details>"
@@ -489,7 +498,7 @@ def _dossier_html(payload: dict[str, Any]) -> str:
     heading = f"<h1>{html.escape(ident.get('display_name') or ident.get('slug') or '')}</h1>"
     return _page(
         f"{ident.get('slug')} · ClankOps Terminal",
-        heading + now_section + reconcile_section + timeline + missions + features + tasks + decisions + brief_pre,
+        heading + now_section + reconcile_section + timeline + missions + features + tasks + decisions + artifacts + brief_pre,
     )
 
 
