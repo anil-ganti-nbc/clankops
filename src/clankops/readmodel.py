@@ -344,10 +344,11 @@ def event_summary(event: Any) -> str:
     payload = event.payload or {}
     if str(getattr(event, "event_type", "")) == EventType.DEPLOYMENT_OBSERVED:
         env = payload.get("environment") or "unknown"
+        surface = payload.get("surface_id") or "unknown"
         host = payload.get("host_identity") or "unknown"
         sha = short_head(payload.get("deployed_sha")) or "unknown"
         note = payload.get("notification_authority") or "unknown"
-        return f"{env} {host} sha={sha} notification={note}"
+        return f"{surface} {env} {host} sha={sha} notification={note}"
     for key in (
         "objective",
         "to_state",

@@ -292,6 +292,16 @@ CREATE INDEX idx_deploy_obs_clank_surface
     ON deployment_observations(clank_id, environment, host_identity, ledger_seq);
 """,
     ),
+    (
+        4,
+        "foundation6_surface_identity",
+        """
+ALTER TABLE deployment_observations ADD COLUMN surface_id TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX idx_deploy_obs_clank_surface_id
+    ON deployment_observations(clank_id, surface_id, ledger_seq);
+""",
+    ),
 ]
 
 PROJECTION_TABLES = (

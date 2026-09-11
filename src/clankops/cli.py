@@ -840,6 +840,7 @@ def _format_deployment_row(row: dict[str, Any]) -> str:
     sha = row.get("sha_short") or (row.get("deployed_sha") or "unknown")[:7]
     cadence = row.get("scheduler_cadence") or ""
     return (
+        f"{row.get('surface_id') or 'unknown'} "
         f"{row.get('environment') or 'unknown'} {row.get('host_identity') or 'unknown'} "
         f"sha={sha or 'unknown'} age={row.get('age') or 'unknown'} "
         f"deployed={row.get('deployed') or 'unknown'} "
@@ -862,6 +863,7 @@ def cmd_deployment_capture(args: argparse.Namespace) -> int:
             store,
             args.clank,
             mission=args.mission,
+            surface=args.surface,
             environment=args.environment,
             host=args.host,
             runtime_path=args.runtime_path,
@@ -1128,11 +1130,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="unfinished Mission id (COPS-xxxxxx); required if several unfinished Missions exist",
     )
     p.add_argument(
+        "--surface",
+        required=True,
+        help="stable surface id (hetzner-prod, nas-canary); not inferred from host",
+    )
+    p.add_argument(
         "--environment",
         required=True,
         choices=["prod", "staging", "canary", "dev", "experimental"],
     )
-    p.add_argument("--host", required=True, help="host identity for this surface")
+    p.add_argument("--host", required=True, help="host identity (attribute, not identity)")
     p.add_argument("--runtime-path")
     p.add_argument("--deployed-sha")
     p.add_argument("--image", help="image or build identity")
@@ -1181,10 +1188,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--history",
         action="store_true",
-        help="every observation; default is current per environment+host",
+        help="every observation; default is current per surface_id",
     )
     p.set_defaults(func=cmd_deployment_list)
-    p = dsub.add_parser("current", help="latest observation per environment+host")
+    p = dsub.add_parser("current", help="latest observation per surface_id")
     p.add_argument("clank")
     p.set_defaults(func=cmd_deployment_current)
 

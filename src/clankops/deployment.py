@@ -7,6 +7,7 @@ This slice does not SSH, schedule, or mutate remote hosts.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from typing import Any
 
@@ -15,7 +16,7 @@ from clankops.clock import isoformat_utc
 from clankops.enums import EventSource, EventType
 from clankops.errors import ValidationError
 from clankops.ids import new_id
-from clankops.redact import sanitize_captured, sanitize_text
+from clankops.redact import sanitize_captured
 from clankops.store import Store
 from clankops.timefmt import format_age, parse_utc, short_head
 
@@ -25,6 +26,7 @@ RUNNING_STATES = frozenset(
 )
 TRI_STATES = frozenset({"yes", "no", "unknown"})
 SCHEDULERS = frozenset({"unknown", "none", "cron", "dsm_task"})
+_SURFACE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,127}$")
 
 
 def _blank(value: Any) -> bool:
@@ -73,14 +75,24 @@ def _metadata(value: Any) -> dict[str, Any]:
             raise ValidationError(f"metadata is not valid JSON: {exc}") from exc
     if not isinstance(value, dict):
         raise ValidationError("metadata must be a JSON object")
-    cleaned = sanitize_captured(value)
-    if not isinstance(cleaned, dict):
-        return {}
-    return cleaned
+    return value
 
 
-def _surface_key(environment: str, host: str) -> str:
-    return f"{environment}:{host}"
+def _surface_id(value: Any) -> str:
+    text = _text(value, field="surface", required=True)
+    assert text is not None
+    slug = text.lower()
+    if not _SURFACE_RE.fullmatch(slug):
+        raise ValidationError(
+            "surface must be a stable id like hetzner-prod "
+            "(lowercase letters, digits, hyphens); it is not inferred from host"
+        )
+    return slug
+
+
+def _secret_barrier(value: Any) -> Any:
+    """Last step before emit: secrets never enter the ledger."""
+    return sanitize_captured(value)
 
 
 def _present(
@@ -109,7 +121,7 @@ def _present(
         "mission_id": row.get("mission_id"),
         "environment": row["environment"],
         "host_identity": row["host_identity"],
-        "surface_key": _surface_key(row["environment"], row["host_identity"]),
+        "surface_id": row.get("surface_id"),
         "runtime_path": row.get("runtime_path"),
         "deployed_sha": sha,
         "sha_short": short_head(sha),
@@ -151,9 +163,9 @@ def _rows_for_clank(store: Store, clank: str) -> list[dict[str, Any]]:
 
 
 def _current_ids(rows: list[dict[str, Any]]) -> set[str]:
-    latest: dict[tuple[str, str], str] = {}
+    latest: dict[str, str] = {}
     for row in rows:
-        latest[(row["environment"], row["host_identity"])] = row["observation_id"]
+        latest[str(row["surface_id"])] = row["observation_id"]
     return set(latest.values())
 
 
@@ -189,6 +201,7 @@ def capture_deployment(
     store: Store,
     clank: str,
     *,
+    surface: str | None = None,
     environment: str | None = None,
     host: str | None = None,
     mission: str | None = None,
@@ -221,6 +234,7 @@ def capture_deployment(
         attach_kind="deployment observation",
         attach_kind_plural="deployment observations",
     )
+    surface_id = _surface_id(surface)
     env = _closed(environment, ENVIRONMENTS, field="environment", default="")
     if not env:
         raise ValidationError(
@@ -230,14 +244,14 @@ def capture_deployment(
     how = _text(observed_how, field="observed-how", required=True)
     assert host_identity is not None
     assert how is not None
-    how = sanitize_text(how) or how
     observer_name = _text(observer, field="observer") or store.default_actor
-    notes_clean = sanitize_text(_text(notes, field="notes"))
+    notes_clean = _text(notes, field="notes")
     meta = _metadata(metadata)
     observation_id = new_id()
     observed_at = isoformat_utc(store.clock.now())
     payload = {
         "observation_id": observation_id,
+        "surface_id": surface_id,
         "environment": env,
         "host_identity": host_identity,
         "runtime_path": _text(runtime_path, field="runtime-path"),
@@ -265,17 +279,22 @@ def capture_deployment(
         "notes": notes_clean,
         "metadata": meta,
     }
+    provenance = {
+        "recorder": "clankops.deployment",
+        "observed_how": how,
+        "observer": observer_name,
+    }
+    payload = _secret_barrier(payload)
+    provenance = _secret_barrier(provenance)
+    if not isinstance(payload, dict) or not isinstance(provenance, dict):
+        raise ValidationError("deployment payload sanitisation failed")
     store._emit(
         EventType.DEPLOYMENT_OBSERVED,
         payload,
         source=EventSource.DEPLOYMENT,
         clank_id=clank_id,
         mission_id=mission_row["mission_id"],
-        provenance={
-            "recorder": "clankops.deployment",
-            "observed_how": how,
-            "observer": observer_name,
-        },
+        provenance=provenance,
     )
     store.commit()
     row = dict(

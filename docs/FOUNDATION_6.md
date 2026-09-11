@@ -13,7 +13,8 @@ it does not SSH, schedule, or mutate remote hosts. Capture is explicit.
 - Read model: `clankctl deployment list <clank>` and `clankctl deployment current <clank>`
 - Terminal dossier section **DEPLOYMENTS** (labels as text, never colour alone)
 - Mission targeting uses the same unfinished-Mission laws as Foundation 5
-- Secrets (webhook URLs, tokens, credentials) are stripped before storage
+- Secrets (webhook URLs, tokens, credentials) are stripped from every
+  user-controlled capture field **before** the event is appended.
 
 ## Distinctions
 
@@ -34,15 +35,17 @@ it does not SSH, schedule, or mutate remote hosts. Capture is explicit.
 ## Capture
 
 ```text
-clankctl deployment capture oem-radar --environment prod --host ubuntu-4gb-hel1-1 ...
+clankctl deployment capture oem-radar --surface hetzner-prod --environment prod --host ubuntu-4gb-hel1-1 ...
 clankctl deployment list oem-radar
 clankctl deployment current oem-radar
 ```
 
+`--surface` is the stable deployment identity (`hetzner-prod`, `nas-canary`,
+`experimental-sitemap-soak`). It is not inferred from host, environment,
+runtime path, container name, or SHA. Those remain attributes.
 `--environment` is one of `prod | staging | canary | dev | experimental`.
-`--host` identifies the surface together with environment. `--observed-how` is
-required. `--mission COPS-xxxxxx` is required when several unfinished Missions
-exist.
+`--observed-how` is required. `--mission COPS-xxxxxx` is required when several
+unfinished Missions exist.
 
 `source=DEPLOYMENT`. The observer/actor is recorded separately. How the
 evidence was obtained is `observed_how` (operator report, agent report, …).
@@ -55,9 +58,16 @@ belong to the requested Clank and be unfinished.
 
 ## Read model
 
-Current = latest observation per `(clank, environment, host)`. `list` shows
+Current = latest observation per `(clank_id, surface_id)`. `list` shows
 that set; `list --history` shows every observation in ledger order with
-`is_current`. Projection rows are insert-only; rebuild replays events.
+`is_current`. Different surfaces on the same host and environment stay
+simultaneously current. Projection rows are insert-only; rebuild replays events.
+
+User-controlled strings (host, paths, image, runtime identity, cadence,
+state store, observed_how, observer, notes, metadata) pass a secret barrier
+before `store._emit()`. Webhook URLs, userinfo, `token=` / `api_key=` query
+parameters, Bearer values, and GitHub-style tokens are stripped. Safe
+`webhook_configured` flags survive.
 
 ## Out of scope
 

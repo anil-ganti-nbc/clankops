@@ -495,8 +495,9 @@ def _dossier_html(payload: dict[str, Any]) -> str:
         "DEPLOYMENTS",
         payload.get("deployments") or [],
         lambda d: (
+            f"{html.escape(_unknown(d.get('surface_id')))} "
             f"{_mark(str(d.get('environment') or 'unknown'))} "
-            f"{html.escape(_unknown(d.get('host_identity')))} "
+            f"host {html.escape(_unknown(d.get('host_identity')))} "
             f"sha {html.escape(_unknown(d.get('sha_short') or (d.get('deployed_sha') or '')[:7]))} "
             f"age {html.escape(_unknown(d.get('age')))} "
             f"deployed {_mark(str(d.get('deployed') or 'unknown'))} "

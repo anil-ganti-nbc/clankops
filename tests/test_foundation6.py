@@ -34,12 +34,18 @@ HETZNER_SHA = "24d61dd4238ad03c073ae592c57e2ffa6fbdb488"
 NAS_SHA = "d720e0635894ddcc9a39f116e2aa4a1768090042"
 HETZNER_HOST = "ubuntu-4gb-hel1-1"
 NAS_HOST = "Anil_NAS"
+HETZNER_SURFACE = "hetzner-prod"
+NAS_SURFACE = "nas-canary"
 WEBHOOK_URL = "https://discord.com/api/webhooks/000000000000000000/do-not-store-this"
 OBSERVED_HOW = "operator report from COPS-000012; no live SSH in this capture"
+GITHUB_TOKEN = "ghp_abcdefghijklmnopqrstuvwxyz012345"
+BEARER_SECRET = "Bearer super-bearer-secret-value"
+QUERY_SECRET = "https://example.test/hook?token=query-token-secret&api_key=query-api-key-secret"
 
 
 def _hetzner(**overrides):
     payload = {
+        "surface": HETZNER_SURFACE,
         "environment": "prod",
         "host": HETZNER_HOST,
         "runtime_path": "/home/deploy/staging/oem-radar",
@@ -63,6 +69,7 @@ def _hetzner(**overrides):
 
 def _nas(**overrides):
     payload = {
+        "surface": NAS_SURFACE,
         "environment": "canary",
         "host": NAS_HOST,
         "runtime_path": "/volume2/clank/oem-radar",
@@ -94,6 +101,22 @@ def _capture_topology(store):
 
 def _by_host(rows: list[dict]) -> dict[str, dict]:
     return {row["host_identity"]: row for row in rows}
+
+
+def _by_surface(rows: list[dict]) -> dict[str, dict]:
+    return {row["surface_id"]: row for row in rows}
+
+
+def _ledger_blob(store) -> str:
+    rows = store.conn.execute(
+        "SELECT payload_json, provenance_json FROM events WHERE event_type = ?",
+        (EventType.DEPLOYMENT_OBSERVED,),
+    ).fetchall()
+    parts = [row["payload_json"] + row["provenance_json"] for row in rows]
+    proj = store.conn.execute("SELECT * FROM deployment_observations").fetchall()
+    for row in proj:
+        parts.append(json.dumps(dict(row), default=str))
+    return "\n".join(parts)
 
 
 def test_environments_are_the_closed_surface_set() -> None:
@@ -129,6 +152,7 @@ def test_oem_radar_topology_answers_the_acceptance_questions(tmp_path: Path) -> 
 
     shas = {row["deployed_sha"] for row in current}
     assert shas == {HETZNER_SHA, NAS_SHA}
+    assert {row["surface_id"] for row in current} == {HETZNER_SURFACE, NAS_SURFACE}
     store.conn.close()
 
 
@@ -230,6 +254,7 @@ def test_unknown_stays_unknown_when_fields_omitted(tmp_path: Path) -> None:
     capture_deployment(
         store,
         "oem-radar",
+        surface="laptop-dev",
         environment="dev",
         host="laptop",
         observed_how="agent report of a local tree; runtime not inspected",
@@ -249,36 +274,52 @@ def test_unknown_stays_unknown_when_fields_omitted(tmp_path: Path) -> None:
 def test_secrets_are_never_stored(tmp_path: Path) -> None:
     store = open_store(tmp_path / "sec.db", actor="cursor")
     _seed(store, remotes=[CANON], branch="main", head=HEAD)
+    before = ledger_fingerprint(store)
     capture_deployment(
         store,
         "oem-radar",
         **_hetzner(
-            notes=f"webhook {WEBHOOK_URL}",
+            host=WEBHOOK_URL,
+            runtime_path=QUERY_SECRET,
+            image=BEARER_SECRET,
+            runtime_identity=GITHUB_TOKEN,
+            cadence=f"hourly {QUERY_SECRET}",
+            state_store="https://user:store-password-secret@nas.example.test/data",
+            observed_how=f"{OBSERVED_HOW} {BEARER_SECRET}",
+            observer=GITHUB_TOKEN,
+            notes=f"webhook {WEBHOOK_URL} {BEARER_SECRET}",
             metadata={
                 "OEM_RADAR_DISCORD_WEBHOOK": WEBHOOK_URL,
                 "webhook_url": WEBHOOK_URL,
-                "token": "ghp_should-not-persist",
+                "token": GITHUB_TOKEN,
+                "url": WEBHOOK_URL,
+                "value": GITHUB_TOKEN,
+                "nested": {"url": WEBHOOK_URL, "value": "ghp_nestedsecretvaluexx"},
+                "homepage": "https://github.com/anil-ganti-nbc/oem-radar",
                 "webhook_configured": True,
             },
         ),
     )
-    row = current_deployments(store, "oem-radar")[0]
-    blob = json.dumps(row, default=str)
-    assert "discord.com/api/webhooks" not in blob
-    assert "do-not-store-this" not in blob
-    assert "ghp_should-not-persist" not in blob
-    event = store.conn.execute(
-        "SELECT payload_json, provenance_json FROM events WHERE event_type = ?",
-        (EventType.DEPLOYMENT_OBSERVED,),
-    ).fetchone()
-    raw = event["payload_json"] + event["provenance_json"]
-    assert "do-not-store-this" not in raw
-    assert "ghp_should-not-persist" not in raw
-    meta = row["metadata"] if isinstance(row.get("metadata"), dict) else json.loads(row["metadata_json"])
+    blob = _ledger_blob(store) + json.dumps(current_deployments(store, "oem-radar"), default=str)
+    for secret in (
+        "do-not-store-this",
+        "discord.com/api/webhooks",
+        "query-token-secret",
+        "query-api-key-secret",
+        "super-bearer-secret-value",
+        GITHUB_TOKEN,
+        "store-password-secret",
+        "ghp_nestedsecretvaluexx",
+    ):
+        assert secret not in blob
+    meta = current_deployments(store, "oem-radar")[0]["metadata"]
     assert meta["webhook_configured"] is True
-    assert meta["webhook_url"] == "[redacted]"
-    assert meta["OEM_RADAR_DISCORD_WEBHOOK"] == "[redacted]"
-    assert "[redacted]" in row["notes"]
+    assert meta["homepage"] == "https://github.com/anil-ganti-nbc/oem-radar"
+    assert meta["url"] == "[redacted]"
+    assert meta["value"] == "[redacted]"
+    assert meta["nested"]["url"] == "[redacted]"
+    assert meta["nested"]["value"] == "[redacted]"
+    assert ledger_fingerprint(store)["event_count"] == before["event_count"] + 1
     store.conn.close()
 
 
@@ -295,7 +336,13 @@ def test_runtime_evidence_states_how_it_was_observed(tmp_path: Path) -> None:
     store = open_store(tmp_path / "how.db", actor="cursor")
     _seed(store, remotes=[CANON], branch="main", head=HEAD)
     with pytest.raises(ValidationError, match="observed-how"):
-        capture_deployment(store, "oem-radar", environment="prod", host=HETZNER_HOST)
+        capture_deployment(
+            store,
+            "oem-radar",
+            surface=HETZNER_SURFACE,
+            environment="prod",
+            host=HETZNER_HOST,
+        )
     result = capture_deployment(store, "oem-radar", **_hetzner())
     row = result["observation"]
     assert row["observed_how"] == OBSERVED_HOW
@@ -430,18 +477,48 @@ def test_rebuild_preserves_deployment_observations(tmp_path: Path) -> None:
     store.conn.close()
 
 
-def test_host_and_environment_are_required(tmp_path: Path) -> None:
+def test_surface_environment_and_host_are_required(tmp_path: Path) -> None:
     store = open_store(tmp_path / "req.db", actor="cursor")
     _seed(store, remotes=[CANON], branch="main", head=HEAD)
-    with pytest.raises(ValidationError, match="environment"):
-        capture_deployment(store, "oem-radar", host=HETZNER_HOST, observed_how=OBSERVED_HOW)
-    with pytest.raises(ValidationError, match="host"):
-        capture_deployment(store, "oem-radar", environment="prod", observed_how=OBSERVED_HOW)
+    with pytest.raises(ValidationError, match="surface"):
+        capture_deployment(
+            store,
+            "oem-radar",
+            environment="prod",
+            host=HETZNER_HOST,
+            observed_how=OBSERVED_HOW,
+        )
     with pytest.raises(ValidationError, match="environment"):
         capture_deployment(
             store,
             "oem-radar",
+            surface=HETZNER_SURFACE,
+            host=HETZNER_HOST,
+            observed_how=OBSERVED_HOW,
+        )
+    with pytest.raises(ValidationError, match="host"):
+        capture_deployment(
+            store,
+            "oem-radar",
+            surface=HETZNER_SURFACE,
+            environment="prod",
+            observed_how=OBSERVED_HOW,
+        )
+    with pytest.raises(ValidationError, match="environment"):
+        capture_deployment(
+            store,
+            "oem-radar",
+            surface=HETZNER_SURFACE,
             environment="production",
+            host=HETZNER_HOST,
+            observed_how=OBSERVED_HOW,
+        )
+    with pytest.raises(ValidationError, match="surface"):
+        capture_deployment(
+            store,
+            "oem-radar",
+            surface=WEBHOOK_URL,
+            environment="prod",
             host=HETZNER_HOST,
             observed_how=OBSERVED_HOW,
         )
@@ -458,6 +535,8 @@ def test_dossier_and_terminal_show_deployments_without_colour_alone(
     assert {row["host_identity"] for row in rows} == {HETZNER_HOST, NAS_HOST}
     html = _dossier_html(payload)
     assert "DEPLOYMENTS" in html
+    assert HETZNER_SURFACE in html
+    assert NAS_SURFACE in html
     assert HETZNER_HOST in html
     assert NAS_HOST in html
     assert "24d61dd" in html
@@ -489,6 +568,8 @@ def test_cli_capture_list_current(tmp_path: Path, capsys) -> None:
                 "deployment",
                 "capture",
                 "oem-radar",
+                "--surface",
+                HETZNER_SURFACE,
                 "--environment",
                 "prod",
                 "--host",
@@ -525,6 +606,7 @@ def test_cli_capture_list_current(tmp_path: Path, capsys) -> None:
     )
     hetzner = json.loads(capsys.readouterr().out)
     assert hetzner["observation"]["source"] == EventSource.DEPLOYMENT
+    assert hetzner["observation"]["surface_id"] == HETZNER_SURFACE
     assert (
         main(
             [
@@ -535,6 +617,8 @@ def test_cli_capture_list_current(tmp_path: Path, capsys) -> None:
                 "deployment",
                 "capture",
                 "oem-radar",
+                "--surface",
+                NAS_SURFACE,
                 "--environment",
                 "canary",
                 "--host",
@@ -567,9 +651,72 @@ def test_cli_capture_list_current(tmp_path: Path, capsys) -> None:
     assert {row["host_identity"] for row in current} == {HETZNER_HOST, NAS_HOST}
     assert main(["--db", db, "deployment", "list", "oem-radar"]) == 0
     listed = capsys.readouterr().out
+    assert HETZNER_SURFACE in listed
+    assert NAS_SURFACE in listed
     assert HETZNER_HOST in listed
     assert NAS_HOST in listed
     assert "24d61dd" in listed
     assert "notification=yes" in listed
     assert "notification=no" in listed
     assert listed.count("discord.com/api/webhooks") == 0
+
+
+def test_surface_id_is_identity_not_host_or_environment(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "surf.db", actor="cursor")
+    _seed(store, remotes=[CANON], branch="main", head=HEAD)
+    host = "japan-mini-pc"
+    sitemap = capture_deployment(
+        store,
+        "oem-radar",
+        surface="experimental-sitemap-soak",
+        environment="experimental",
+        host=host,
+        deployed_sha="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        runtime_path="/opt/sitemap",
+        runtime_identity="sitemap-soak",
+        observed_how=OBSERVED_HOW,
+    )
+    japan = capture_deployment(
+        store,
+        "oem-radar",
+        surface="japan-mini-pc-soak",
+        environment="experimental",
+        host=host,
+        deployed_sha="cccccccccccccccccccccccccccccccccccccccc",
+        runtime_path="/opt/japan",
+        runtime_identity="japan-soak",
+        observed_how=OBSERVED_HOW,
+    )
+    current = current_deployments(store, "oem-radar")
+    surfaces = _by_surface(current)
+    assert set(surfaces) == {"experimental-sitemap-soak", "japan-mini-pc-soak"}
+    assert surfaces["experimental-sitemap-soak"]["host_identity"] == host
+    assert surfaces["japan-mini-pc-soak"]["host_identity"] == host
+    assert surfaces["experimental-sitemap-soak"]["environment"] == "experimental"
+    assert surfaces["japan-mini-pc-soak"]["environment"] == "experimental"
+
+    capture_deployment(
+        store,
+        "oem-radar",
+        surface="experimental-sitemap-soak",
+        environment="experimental",
+        host=host,
+        deployed_sha="dddddddddddddddddddddddddddddddddddddddd",
+        observed_how=OBSERVED_HOW,
+    )
+    current = current_deployments(store, "oem-radar")
+    surfaces = _by_surface(current)
+    assert len(current) == 2
+    assert surfaces["experimental-sitemap-soak"]["deployed_sha"].startswith("dddd")
+    assert surfaces["japan-mini-pc-soak"]["deployed_sha"].startswith("cccc")
+    assert (
+        surfaces["japan-mini-pc-soak"]["observation_id"]
+        == japan["observation"]["observation_id"]
+    )
+    history = list_deployments(store, "oem-radar", history=True)
+    assert len(history) == 3
+    assert sitemap["observation"]["observation_id"] in {
+        row["observation_id"] for row in history
+    }
+    store.conn.close()
+

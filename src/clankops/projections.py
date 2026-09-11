@@ -371,18 +371,19 @@ def _apply_deployment_observed(conn: sqlite3.Connection, event: Event) -> None:
     conn.execute(
         """
         INSERT INTO deployment_observations (
-            observation_id, clank_id, mission_id, environment, host_identity,
-            runtime_path, deployed_sha, image_id, runtime_identity, deployed,
-            running, scheduler, scheduler_cadence, state_store,
+            observation_id, clank_id, mission_id, surface_id, environment,
+            host_identity, runtime_path, deployed_sha, image_id, runtime_identity,
+            deployed, running, scheduler, scheduler_cadence, state_store,
             collection_authority, notification_authority, webhook_configured,
             sent_count, observed_at, observed_how, observer, source, notes,
             metadata_json, created_utc, ledger_seq
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             p["observation_id"],
             event.clank_id,
             event.mission_id,
+            p["surface_id"],
             p["environment"],
             p["host_identity"],
             p.get("runtime_path"),
