@@ -491,6 +491,25 @@ def _dossier_html(payload: dict[str, Any]) -> str:
             f"{html.escape(a.get('title') or a.get('ref') or '')}"
         ),
     )
+    deployments = _list_block(
+        "DEPLOYMENTS",
+        payload.get("deployments") or [],
+        lambda d: (
+            f"{_mark(str(d.get('environment') or 'unknown'))} "
+            f"{html.escape(_unknown(d.get('host_identity')))} "
+            f"sha {html.escape(_unknown(d.get('sha_short') or (d.get('deployed_sha') or '')[:7]))} "
+            f"age {html.escape(_unknown(d.get('age')))} "
+            f"deployed {_mark(str(d.get('deployed') or 'unknown'))} "
+            f"running {_mark(str(d.get('running') or 'unknown'))} "
+            f"collection: {html.escape(_unknown(d.get('collection_authority')))} "
+            f"notification: {html.escape(_unknown(d.get('notification_authority')))} "
+            f"scheduler {html.escape(_unknown(d.get('scheduler')))} "
+            f"{html.escape(d.get('scheduler_cadence') or '')} "
+            f"state {html.escape(_unknown(d.get('state_store')))} "
+            f"{_mark(str(d.get('source') or 'unknown'))} "
+            f"{html.escape(_unknown(d.get('observed_how')))}"
+        ),
+    )
     brief_pre = (
         "<details><summary class=\"muted\">raw brief (input)</summary>"
         f"<pre>{html.escape(format_brief(payload.get('brief') or payload))}</pre></details>"
@@ -498,7 +517,7 @@ def _dossier_html(payload: dict[str, Any]) -> str:
     heading = f"<h1>{html.escape(ident.get('display_name') or ident.get('slug') or '')}</h1>"
     return _page(
         f"{ident.get('slug')} · ClankOps Terminal",
-        heading + now_section + reconcile_section + timeline + missions + features + tasks + decisions + artifacts + brief_pre,
+        heading + now_section + reconcile_section + timeline + missions + features + tasks + decisions + artifacts + deployments + brief_pre,
     )
 
 

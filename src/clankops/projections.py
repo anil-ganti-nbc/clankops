@@ -366,6 +366,50 @@ def _apply_census_candidate(conn: sqlite3.Connection, event: Event) -> None:
     )
 
 
+def _apply_deployment_observed(conn: sqlite3.Connection, event: Event) -> None:
+    p = event.payload
+    conn.execute(
+        """
+        INSERT INTO deployment_observations (
+            observation_id, clank_id, mission_id, environment, host_identity,
+            runtime_path, deployed_sha, image_id, runtime_identity, deployed,
+            running, scheduler, scheduler_cadence, state_store,
+            collection_authority, notification_authority, webhook_configured,
+            sent_count, observed_at, observed_how, observer, source, notes,
+            metadata_json, created_utc, ledger_seq
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            p["observation_id"],
+            event.clank_id,
+            event.mission_id,
+            p["environment"],
+            p["host_identity"],
+            p.get("runtime_path"),
+            p.get("deployed_sha"),
+            p.get("image_id"),
+            p.get("runtime_identity"),
+            p.get("deployed") or "unknown",
+            p.get("running") or "unknown",
+            p.get("scheduler") or "unknown",
+            p.get("scheduler_cadence"),
+            p.get("state_store"),
+            p.get("collection_authority") or "unknown",
+            p.get("notification_authority") or "unknown",
+            p.get("webhook_configured") or "unknown",
+            p.get("sent_count"),
+            p.get("observed_at") or event.ts_utc,
+            p["observed_how"],
+            p.get("observer") or event.actor,
+            p.get("source") or event.source,
+            p.get("notes"),
+            json.dumps(p.get("metadata") or {}, sort_keys=True),
+            event.ts_utc,
+            event.ledger_seq,
+        ),
+    )
+
+
 HANDLERS: dict[str, Handler] = {
     EventType.CLANK_REGISTERED: _apply_clank_registered,
     EventType.CLANK_ALIAS_ADDED: _apply_clank_alias_added,
@@ -387,6 +431,7 @@ HANDLERS: dict[str, Handler] = {
     EventType.ARTIFACT_ATTACHED: _apply_artifact_attached,
     EventType.RELATIONSHIP_RECORDED: _apply_relationship,
     EventType.CENSUS_CANDIDATE_RECORDED: _apply_census_candidate,
+    EventType.DEPLOYMENT_OBSERVED: _apply_deployment_observed,
 }
 
 

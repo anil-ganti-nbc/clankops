@@ -45,6 +45,7 @@ Corrections are new events. Existing events are never silently edited to represe
 | `ARTIFACT_ATTACHED` | artifact_id, kind, ref, artifact_source, metadata |
 | `RELATIONSHIP_RECORDED` | relationship_id, from_clank_id, to_clank_id, kind |
 | `CENSUS_CANDIDATE_RECORDED` | full candidate snapshot |
+| `DEPLOYMENT_OBSERVED` | observation_id, environment, host_identity, runtime_path, deployed_sha, image_id, runtime_identity, deployed, running, scheduler, scheduler_cadence, state_store, collection_authority, notification_authority, webhook_configured, sent_count, observed_at, observed_how, observer, notes, sanitised metadata |
 
 ## Mission states
 

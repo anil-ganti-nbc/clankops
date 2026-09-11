@@ -255,9 +255,47 @@ SELECT 1, COALESCE(MAX(ledger_seq), 0) + 1 FROM events;
 ALTER TABLE checkpoints ADD COLUMN session_id TEXT;
 """,
     ),
+    (
+        3,
+        "foundation6_deployment_observations",
+        """
+CREATE TABLE deployment_observations (
+    observation_id TEXT PRIMARY KEY,
+    clank_id TEXT NOT NULL,
+    mission_id TEXT,
+    environment TEXT NOT NULL,
+    host_identity TEXT NOT NULL,
+    runtime_path TEXT,
+    deployed_sha TEXT,
+    image_id TEXT,
+    runtime_identity TEXT,
+    deployed TEXT NOT NULL,
+    running TEXT NOT NULL,
+    scheduler TEXT NOT NULL,
+    scheduler_cadence TEXT,
+    state_store TEXT,
+    collection_authority TEXT NOT NULL,
+    notification_authority TEXT NOT NULL,
+    webhook_configured TEXT NOT NULL,
+    sent_count INTEGER,
+    observed_at TEXT NOT NULL,
+    observed_how TEXT NOT NULL,
+    observer TEXT,
+    source TEXT NOT NULL,
+    notes TEXT,
+    metadata_json TEXT NOT NULL,
+    created_utc TEXT NOT NULL,
+    ledger_seq INTEGER NOT NULL
+);
+
+CREATE INDEX idx_deploy_obs_clank_surface
+    ON deployment_observations(clank_id, environment, host_identity, ledger_seq);
+""",
+    ),
 ]
 
 PROJECTION_TABLES = (
+    "deployment_observations",
     "census_candidates",
     "checkpoints",
     "relationships",

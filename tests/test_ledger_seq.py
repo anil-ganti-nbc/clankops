@@ -86,7 +86,7 @@ def test_v1_events_migrate_ledger_seq(tmp_path: Path) -> None:
     conn.close()
 
     conn = connect(db, clock=FrozenClock(FROZEN))
-    assert current_schema_version(conn) == 2
+    assert current_schema_version(conn) == 3
     rows = conn.execute(f"SELECT event_id, ledger_seq FROM events {LEDGER_ORDER_SQL}").fetchall()
     assert [r["ledger_seq"] for r in rows] == [1, 2]
     # F0 order was ts_utc, event_id: aaaa before bbbb
