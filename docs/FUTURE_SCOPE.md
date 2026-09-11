@@ -71,8 +71,10 @@ Ideas noticed during Foundation 0. None of these are implemented. Do not treat t
 
 ## Stale-work detection
 
-- Missions ACTIVE/PAUSED with no checkpoint inside N days
-- Dirty trees with no open Mission
+- Foundation 7 derives an attention queue (`clankctl attention`) from existing
+  evidence. It does not invent a Clank health score, auto-close Sessions, or
+  treat age as failure by default.
+- Additional ageing heuristics beyond the initial reason codes
 - Documents/Default Project checkouts that lag primary Clanks HEAD
 
 ## Historical reconstruction

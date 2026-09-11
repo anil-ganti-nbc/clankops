@@ -768,6 +768,44 @@ def cmd_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_attention(args: argparse.Namespace) -> int:
+    from clankops.attention import (
+        DEFAULT_THRESHOLD_LABEL,
+        DEFAULT_THRESHOLD_SOURCE,
+        OPERATOR_THRESHOLD_SOURCE,
+        attention_report,
+        format_attention_text,
+    )
+    from clankops.readmodel import DEFAULT_STALE
+    from clankops.timefmt import parse_duration
+
+    if args.older_than:
+        stale_after = parse_duration(args.older_than)
+        threshold_label = args.older_than
+        threshold_source = OPERATOR_THRESHOLD_SOURCE
+    else:
+        stale_after = DEFAULT_STALE
+        threshold_label = DEFAULT_THRESHOLD_LABEL
+        threshold_source = DEFAULT_THRESHOLD_SOURCE
+    store = open_readonly_store(args.db)
+    try:
+        payload = attention_report(
+            store,
+            args.clank,
+            stale_after=stale_after,
+            threshold_label=threshold_label,
+            threshold_source=threshold_source,
+            include_github=not args.no_github,
+        )
+    finally:
+        store.conn.close()
+    if args.json:
+        _print("", as_json=True, payload=payload)
+        return 0
+    _print(format_attention_text(payload), as_json=False)
+    return 0
+
+
 def cmd_reconcile(args: argparse.Namespace) -> int:
     from clankops.reconcile import reconcile_clank, reconcile_fleet
 
@@ -1098,6 +1136,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--all", action="store_true", help="every registered Clank")
     p.add_argument("--no-github", action="store_true", help="skip gh; local git only")
     p.set_defaults(func=cmd_reconcile)
+
+    p = sub.add_parser(
+        "attention",
+        help="derived attention queue (read-only; writes zero ledger events)",
+    )
+    p.add_argument("clank", nargs="?", help="Clank slug or id")
+    p.add_argument(
+        "--older-than",
+        default=None,
+        help="operator-supplied age threshold for STALE_OPEN_SESSION (default: 24h session-staleness)",
+    )
+    p.add_argument("--no-github", action="store_true", help="skip gh; local git only")
+    p.set_defaults(func=cmd_attention)
 
     p = sub.add_parser(
         "ci",

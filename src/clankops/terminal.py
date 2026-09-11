@@ -86,12 +86,16 @@ def dispatch(
     if method not in {"GET", "HEAD"}:
         return HTTPStatus.METHOD_NOT_ALLOWED, "text/plain; charset=utf-8", b"read-only\n"
     older = stale_after
+    threshold_label = None
+    threshold_source = None
     if query.get("older-than") or query.get("older_than"):
         raw = (query.get("older-than") or query.get("older_than") or [DEFAULT_STALE_LABEL])[0]
         try:
             older = parse_duration(raw)
         except ValidationError as exc:
             return HTTPStatus.BAD_REQUEST, "text/plain; charset=utf-8", f"{exc}\n".encode("utf-8")
+        threshold_label = raw
+        threshold_source = "operator-supplied"
     github_raw = (query.get("github") or [None])[0]
     try:
         if route in {"/", "/fleet"}:
@@ -101,6 +105,8 @@ def dispatch(
                 now=now,
                 stale_after=older,
                 include_github=github_raw in {"1", "true", "yes"},
+                threshold_label=threshold_label,
+                threshold_source=threshold_source,
             )
             return HTTPStatus.OK, "text/html; charset=utf-8", _fleet_html(home).encode("utf-8")
         if route == "/api/fleet":
@@ -110,6 +116,8 @@ def dispatch(
                 now=now,
                 stale_after=older,
                 include_github=github_raw in {"1", "true", "yes"},
+                threshold_label=threshold_label,
+                threshold_source=threshold_source,
             )
             return HTTPStatus.OK, "application/json; charset=utf-8", _json(home)
         if route == "/api/coverage":
@@ -220,6 +228,11 @@ def _page(title: str, body: str) -> str:
     .src {{ font-weight: 700; }}
     h2 {{ margin-top: 1.6rem; font-size: 1.05rem; }}
     .note {{ margin: 0.4rem 0 1rem; }}
+    .attention-item {{ display: flex; gap: 0.7rem; border: 1px solid #243040; border-left-width: 0.45rem; padding: 0.45rem 0.6rem; margin: 0.4rem 0; }}
+    .attention-integrity {{ border-left-style: solid; }}
+    .attention-informational {{ border-left-style: dotted; }}
+    .attention-age {{ border-left-style: dashed; }}
+    .attention-shape {{ font-size: 1.15rem; width: 1.2rem; flex: 0 0 1.2rem; }}
   </style>
 </head>
 <body>
@@ -232,6 +245,67 @@ def _page(title: str, body: str) -> str:
 </body>
 </html>
 """
+
+
+def _attention_html(home: dict[str, Any]) -> str:
+    from clankops.attention import CLASS_MARK
+
+    attention = home.get("attention") or {}
+    items = attention.get("items") or []
+    threshold = html.escape(_unknown(attention.get("threshold") or DEFAULT_STALE_LABEL))
+    source = html.escape(_unknown(attention.get("threshold_source") or "session-staleness default"))
+    header = (
+        "<h2>ATTENTION</h2>"
+        "<p class=\"muted\">Derived; not authoritative; writes zero ledger events. "
+        f"threshold {threshold} ({source}). "
+        "Freshness is evidence metadata, not truth. Old is not automatically wrong. "
+        "A different deployed SHA is not a failure.</p>"
+    )
+    if not items:
+        return header + '<p class="muted">none derived</p>'
+    blocks = []
+    for item in items:
+        klass = item.get("class") or "unknown"
+        mark = html.escape(CLASS_MARK.get(klass, "·"))
+        name = html.escape(item.get("clank_name") or item.get("clank") or "unknown")
+        code = item.get("reason_code") or "unknown"
+        reason = html.escape(item.get("reason") or "")
+        evidence = item.get("evidence") or {}
+        bits = []
+        for key in (
+            "checkpoint_id",
+            "session_id",
+            "artifact_id",
+            "observation_id",
+            "surface_id",
+            "recorded_head",
+            "observed_head",
+            "artefact_sha",
+            "deployed_sha",
+        ):
+            value = evidence.get(key)
+            if value:
+                bits.append(f"{html.escape(key)}={html.escape(str(value))}")
+        evidence_html = (
+            f"<div class=\"muted\">evidence {' · '.join(bits)}</div>" if bits else ""
+        )
+        action = html.escape(item.get("suggested_action") or "")
+        provenance = ", ".join(html.escape(str(part)) for part in (item.get("provenance") or []))
+        blocks.append(
+            f"<div class=\"attention-item attention-{html.escape(klass)}\">"
+            f"<div class=\"attention-shape\" aria-hidden=\"true\">{mark}</div>"
+            "<div>"
+            f"<div><strong>{name}</strong> {_mark(code)}</div>"
+            f"<div>{reason}</div>"
+            f"<div class=\"muted\">mission {html.escape(_unknown(item.get('mission')))} · "
+            f"age {html.escape(_unknown(item.get('age')))} · "
+            f"source {html.escape(_unknown(item.get('source')))}</div>"
+            f"{evidence_html}"
+            f"<div class=\"muted\">action {action}</div>"
+            f"<div class=\"muted\">provenance {provenance or 'unknown'}</div>"
+            "</div></div>"
+        )
+    return header + "".join(blocks)
 
 
 def _fleet_html(home: dict[str, Any]) -> str:
@@ -320,7 +394,7 @@ def _fleet_html(home: dict[str, Any]) -> str:
     )
     return _page(
         "ClankOps Terminal",
-        f"<div class=\"summary\">{chip_html}</div>{note}{table}",
+        f"<div class=\"summary\">{chip_html}</div>{note}{_attention_html(home)}{table}",
     )
 
 
