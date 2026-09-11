@@ -66,4 +66,4 @@ A failure produced only by a legacy status context remains auditable from those 
 - Auto-updating checkpoints from CI
 - Owning product-Clank workflows
 - Collection scheduling
-- Foundation 6
+- Remote SSH / live host inventory (Foundation 6 records captured evidence only)

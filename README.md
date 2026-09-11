@@ -4,6 +4,8 @@ Development control plane and institutional memory for the Clank ecosystem.
 
 Foundation 5 can attach that observation to the open Mission as an artefact. Git corroboration from Foundation 3 is unchanged. Reconcile stays read-only.
 
+Foundation 6 records **deployed/runtime** observations as their own evidence. Source HEAD is not deployed HEAD. CI success is not deployment success. Running is not authoritative.
+
 ```text
 clankctl brief oem-radar
 ```
@@ -12,7 +14,7 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 5 (CI artefacts on the Mission). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron.
+Foundation 6 (deployment & runtime provenance). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron. No remote SSH from ClankOps.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 
@@ -61,6 +63,7 @@ python -m clankops --json sessions stale --older-than 24h
 python -m clankops --json reconcile clankops
 python -m clankops --json ci capture clankops
 python -m clankops --json ci capture clankops --mission COPS-000011
+python -m clankops --json deployment current oem-radar
 python -m clankops terminal
 ```
 
@@ -78,6 +81,7 @@ The Terminal is localhost-only and read-only. It does not schedule collection or
 - [Foundation 3 git/GitHub reconciliation](docs/FOUNDATION_3.md)
 - [Foundation 4 GitHub CI evidence](docs/FOUNDATION_4.md)
 - [Foundation 5 CI artefacts](docs/FOUNDATION_5.md)
+- [Foundation 6 deployment provenance](docs/FOUNDATION_6.md)
 - [Future scope](docs/FUTURE_SCOPE.md)
 
 ## Tests

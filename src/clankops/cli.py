@@ -836,6 +836,106 @@ def cmd_ci_capture(args: argparse.Namespace) -> int:
     return 0
 
 
+def _format_deployment_row(row: dict[str, Any]) -> str:
+    sha = row.get("sha_short") or (row.get("deployed_sha") or "unknown")[:7]
+    cadence = row.get("scheduler_cadence") or ""
+    return (
+        f"{row.get('surface_id') or 'unknown'} "
+        f"{row.get('environment') or 'unknown'} {row.get('host_identity') or 'unknown'} "
+        f"sha={sha or 'unknown'} age={row.get('age') or 'unknown'} "
+        f"deployed={row.get('deployed') or 'unknown'} "
+        f"running={row.get('running') or 'unknown'} "
+        f"collection={row.get('collection_authority') or 'unknown'} "
+        f"notification={row.get('notification_authority') or 'unknown'} "
+        f"scheduler={row.get('scheduler') or 'unknown'}{(' ' + cadence) if cadence else ''} "
+        f"state={row.get('state_store') or 'unknown'} "
+        f"source={row.get('source') or 'unknown'} "
+        f"observed_how={row.get('observed_how') or 'unknown'}"
+    )
+
+
+def cmd_deployment_capture(args: argparse.Namespace) -> int:
+    from clankops.deployment import capture_deployment
+
+    store = _store(args)
+    try:
+        payload = capture_deployment(
+            store,
+            args.clank,
+            mission=args.mission,
+            surface=args.surface,
+            environment=args.environment,
+            host=args.host,
+            runtime_path=args.runtime_path,
+            deployed_sha=args.deployed_sha,
+            image=args.image,
+            runtime_identity=args.runtime_identity,
+            deployed=args.deployed,
+            running=args.running,
+            scheduler=args.scheduler,
+            cadence=args.cadence,
+            state_store=args.state_store,
+            collection_authority=args.collection_authority,
+            notification_authority=args.notification_authority,
+            webhook_configured=args.webhook_configured,
+            sent_count=args.sent_count,
+            observed_how=args.observed_how,
+            notes=args.notes,
+            metadata=args.metadata,
+            observer=args.observer,
+        )
+    finally:
+        store.conn.close()
+    if args.json:
+        _print("", as_json=True, payload=payload)
+        return 0
+    row = payload.get("observation") or {}
+    _print(
+        f"{payload.get('mission_display')} captured {_format_deployment_row(row)} "
+        "(history not rewritten)",
+        as_json=False,
+    )
+    return 0
+
+
+def cmd_deployment_list(args: argparse.Namespace) -> int:
+    from clankops.deployment import list_deployments
+
+    store = open_readonly_store(args.db)
+    try:
+        rows = list_deployments(
+            store, args.clank, history=getattr(args, "history", False)
+        )
+    finally:
+        store.conn.close()
+    if args.json:
+        _print("", as_json=True, payload=rows)
+        return 0
+    if not rows:
+        _print("No deployment observations recorded.", as_json=False)
+        return 0
+    _print("\n".join(_format_deployment_row(row) for row in rows), as_json=False)
+    return 0
+
+
+def cmd_deployment_current(args: argparse.Namespace) -> int:
+    from clankops.deployment import current_deployments
+
+    store = open_readonly_store(args.db)
+    try:
+        rows = current_deployments(store, args.clank)
+    finally:
+        store.conn.close()
+    if args.json:
+        _print("", as_json=True, payload=rows)
+        return 0
+    if not rows:
+        _print("No current deployment observations recorded.", as_json=False)
+        return 0
+    _print("\n".join(_format_deployment_row(row) for row in rows), as_json=False)
+    return 0
+
+
 def _format_session_row(row: dict[str, Any]) -> str:
     anomaly = f" ANOMALY={row['anomaly']}" if row.get("anomaly") else ""
     stale = " [stale]" if row.get("stale") else ""
@@ -1014,6 +1114,86 @@ def build_parser() -> argparse.ArgumentParser:
         help="unfinished Mission id (COPS-xxxxxx); required if several unfinished Missions exist",
     )
     p.set_defaults(func=cmd_ci_capture)
+
+    p = sub.add_parser(
+        "deployment",
+        help="record observed runtime/deployed state (write; not reconcile; no SSH)",
+    )
+    dsub = p.add_subparsers(dest="deployment_action", required=True)
+    p = dsub.add_parser(
+        "capture",
+        help="append an immutable deployment observation to an unfinished Mission",
+    )
+    p.add_argument("clank", help="Clank slug or id")
+    p.add_argument(
+        "--mission",
+        help="unfinished Mission id (COPS-xxxxxx); required if several unfinished Missions exist",
+    )
+    p.add_argument(
+        "--surface",
+        required=True,
+        help="stable surface id (hetzner-prod, nas-canary); not inferred from host",
+    )
+    p.add_argument(
+        "--environment",
+        required=True,
+        choices=["prod", "staging", "canary", "dev", "experimental"],
+    )
+    p.add_argument("--host", required=True, help="host identity (attribute, not identity)")
+    p.add_argument("--runtime-path")
+    p.add_argument("--deployed-sha")
+    p.add_argument("--image", help="image or build identity")
+    p.add_argument("--runtime-identity", help="service/container/compose identity")
+    p.add_argument("--deployed", choices=["yes", "no", "unknown"], default="unknown")
+    p.add_argument(
+        "--running",
+        choices=["unknown", "stopped", "running", "scheduled", "scheduled_oneshot"],
+        default="unknown",
+    )
+    p.add_argument(
+        "--scheduler",
+        choices=["unknown", "none", "cron", "dsm_task"],
+        default="unknown",
+    )
+    p.add_argument("--cadence")
+    p.add_argument("--state-store")
+    p.add_argument(
+        "--collection-authority",
+        choices=["yes", "no", "unknown"],
+        default="unknown",
+    )
+    p.add_argument(
+        "--notification-authority",
+        choices=["yes", "no", "unknown"],
+        default="unknown",
+    )
+    p.add_argument(
+        "--webhook-configured",
+        choices=["yes", "no", "unknown"],
+        default="unknown",
+        help="whether a webhook is configured; never pass the URL",
+    )
+    p.add_argument("--sent-count", type=int, default=None)
+    p.add_argument(
+        "--observed-how",
+        required=True,
+        help="how this runtime evidence was observed (required)",
+    )
+    p.add_argument("--observer", help="observer identity (default: actor)")
+    p.add_argument("--notes")
+    p.add_argument("--metadata", help="JSON object; secrets are stripped")
+    p.set_defaults(func=cmd_deployment_capture)
+    p = dsub.add_parser("list", help="current (or historical) deployment observations")
+    p.add_argument("clank")
+    p.add_argument(
+        "--history",
+        action="store_true",
+        help="every observation; default is current per surface_id",
+    )
+    p.set_defaults(func=cmd_deployment_list)
+    p = dsub.add_parser("current", help="latest observation per surface_id")
+    p.add_argument("clank")
+    p.set_defaults(func=cmd_deployment_current)
 
     p = sub.add_parser("terminal", help="read-only localhost Clank Terminal (alpha)")
     p.add_argument("--host", default="127.0.0.1")

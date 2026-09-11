@@ -7,7 +7,7 @@ def test_database_creation_and_wal(tmp_path: Path) -> None:
     db = tmp_path / "x.db"
     conn = connect(db)
     assert db.exists()
-    assert current_schema_version(conn) == 2
+    assert current_schema_version(conn) == 4
     mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
     assert mode.lower() == "wal"
     fks = conn.execute("PRAGMA foreign_keys").fetchone()[0]
@@ -23,7 +23,7 @@ def test_migrations_are_idempotent(tmp_path: Path) -> None:
     conn = connect(db)
     assert current_schema_version(conn) == version
     count = conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
-    assert count == 2
+    assert count == 4
     conn.close()
 
 

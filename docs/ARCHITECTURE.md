@@ -66,7 +66,7 @@ Every event has `source`:
 | LOCAL_GIT | Observed from local git (read-only) |
 | GITHUB | Observed from GitHub |
 | CI | Observed from CI |
-| DEPLOYMENT | Observed from a deployment system |
+| DEPLOYMENT | Observed deployed/runtime state (explicit capture; not live SSH in Foundation 6) |
 | SYSTEM | ClankOps itself |
 | RECONSTRUCTED | Bootstrap / census / inferred history |
 

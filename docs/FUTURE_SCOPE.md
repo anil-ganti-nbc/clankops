@@ -19,9 +19,9 @@ Ideas noticed during Foundation 0. None of these are implemented. Do not treat t
 
 ## Deployment tracking
 
-- Record staging/prod SHA, host, compose file, and soak window as artefacts
-- Distinguish “repo says X” from “host is running X”
-- PHASE0 containment / UNVERIFIED_PRODUCTION labels as first-class lifecycle overlays
+- Foundation 6 records explicit deployment/runtime observations (`clankctl deployment capture`); it still does not SSH or own deploy pipelines
+- Remote inventory / soak windows / PHASE0 containment labels
+- Auto-discovery of hosts
 
 ## CI integration
 

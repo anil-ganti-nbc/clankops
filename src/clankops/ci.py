@@ -8,21 +8,14 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from clankops.enums import EventSource, MissionState
+from clankops.capture import resolve_unfinished_capture_mission
+from clankops.enums import EventSource
 from clankops.errors import ValidationError
 from clankops.githubinspect import inspect_commit_status
 from clankops.reconcile import heads_match, reconcile_clank
 from clankops.store import Store
 
 CI_ARTIFACT_KIND = "github_ci"
-UNFINISHED_MISSION_STATES = frozenset(
-    {
-        MissionState.PLANNED,
-        MissionState.ACTIVE,
-        MissionState.PAUSED,
-        MissionState.BLOCKED,
-    }
-)
 _FAILED = {"failure", "cancelled", "timed_out", "action_required", "error"}
 _TITLE_FAILING_LIMIT = 5
 _TITLE_FAILING_CHARS = 80
@@ -97,31 +90,14 @@ def _resolve_capture_mission(
     mission: str | None,
 ) -> dict[str, Any]:
     """Attach only to an unfinished Mission. Never use active_or_unfinished_mission()."""
-    if mission:
-        row = store.resolve_mission(mission)
-        if row["clank_id"] != clank_id:
-            owner = store.clank_detail(row["clank_id"])
-            raise ValidationError(
-                f"mission {row['display_id']} belongs to "
-                f"{owner.get('slug') or row['clank_id']}, not {clank}"
-            )
-        if row["state"] not in UNFINISHED_MISSION_STATES:
-            raise ValidationError(
-                f"mission {row['display_id']} is {row['state']}; "
-                "CI artefacts attach only to unfinished Missions "
-                "(PLANNED / ACTIVE / PAUSED / BLOCKED)"
-            )
-        return row
-    unfinished = store.unfinished_missions(clank)
-    if not unfinished:
-        raise ValidationError(f"no unfinished Mission for {clank} to attach CI artefact")
-    if len(unfinished) > 1:
-        listed = ", ".join(f"{m['display_id']} [{m['state']}]" for m in unfinished)
-        raise ValidationError(
-            f"multiple unfinished Missions for {clank}: {listed}. "
-            "Pass --mission COPS-xxxxxx"
-        )
-    return unfinished[0]
+    return resolve_unfinished_capture_mission(
+        store,
+        clank,
+        clank_id,
+        mission,
+        attach_kind="CI artefact",
+        attach_kind_plural="CI artefacts",
+    )
 
 
 def _attributable_ci_sha(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from clankops.enums import CensusClassification, MissionState
+from clankops.enums import CensusClassification, EventType, MissionState
 from clankops.events import list_events
 from clankops.reconcile import reconcile_clank
 from clankops.store import Store
@@ -342,6 +342,13 @@ def fleet_home(
 
 def event_summary(event: Any) -> str:
     payload = event.payload or {}
+    if str(getattr(event, "event_type", "")) == EventType.DEPLOYMENT_OBSERVED:
+        env = payload.get("environment") or "unknown"
+        surface = payload.get("surface_id") or "unknown"
+        host = payload.get("host_identity") or "unknown"
+        sha = short_head(payload.get("deployed_sha")) or "unknown"
+        note = payload.get("notification_authority") or "unknown"
+        return f"{surface} {env} {host} sha={sha} notification={note}"
     for key in (
         "objective",
         "to_state",
@@ -442,6 +449,8 @@ def dossier(
         inspect_local=inspect_local,
         inspect_remote=inspect_remote,
     )
+    from clankops.deployment import current_deployments
+
     return {
         "identity": brief["identity"],
         "lifecycle_state": brief.get("lifecycle_state"),
@@ -459,6 +468,7 @@ def dossier(
                 (detail["clank_id"],),
             )
         ],
+        "deployments": current_deployments(store, detail["clank_id"]),
         "brief": brief,
     }
 
