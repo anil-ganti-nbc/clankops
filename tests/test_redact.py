@@ -53,3 +53,9 @@ def test_ordinary_host_and_path_survive() -> None:
     assert sanitize_text("ubuntu-4gb-hel1-1") == "ubuntu-4gb-hel1-1"
     assert sanitize_text("/home/deploy/staging/oem-radar") == "/home/deploy/staging/oem-radar"
     assert sanitize_text("20 * * * *") == "20 * * * *"
+
+
+def test_secret_keys_are_redacted_even_for_flag_shaped_values() -> None:
+    assert sanitize_captured({"token": "yes"})["token"] == "[redacted]"
+    assert sanitize_captured({"password": True})["password"] == "[redacted]"
+    assert sanitize_captured({"webhook_configured": "yes"})["webhook_configured"] == "yes"

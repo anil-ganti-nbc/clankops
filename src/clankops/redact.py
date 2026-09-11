@@ -43,7 +43,6 @@ _SAFE_FLAG_KEYS = frozenset(
         "webhook_absent",
     }
 )
-_SAFE_FLAG_VALUES = frozenset({"yes", "no", "unknown", "true", "false"})
 
 
 def _is_secret_param(name: str) -> bool:
@@ -110,12 +109,16 @@ def sanitize_text(value: str | None) -> str | None:
 
 
 def sanitize_captured(value: Any) -> Any:
-    """Drop webhook URLs, tokens, and credentials. Keep boolean/tri-state flags."""
+    """Drop webhook URLs, tokens, and credentials.
+
+    Secret-classified keys are always replaced. Legitimate flag names such as
+    webhook_configured survive because they are not secret keys.
+    """
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for key, item in value.items():
             name = str(key)
-            if _key_is_secret(name) and not _keep_flag(item):
+            if _key_is_secret(name):
                 out[name] = _REDACTED
             else:
                 out[name] = sanitize_captured(item)
@@ -125,11 +128,3 @@ def sanitize_captured(value: Any) -> Any:
     if isinstance(value, str):
         return sanitize_text(value)
     return value
-
-
-def _keep_flag(item: Any) -> bool:
-    if isinstance(item, bool):
-        return True
-    if isinstance(item, str) and item.strip().lower() in _SAFE_FLAG_VALUES:
-        return True
-    return False
