@@ -74,4 +74,4 @@ parameters, Bearer values, and GitHub-style tokens are stripped. Safe
 - Remote SSH / inventory automation
 - Owning deploy pipelines or schedulers
 - Treating CI green as deployed
-- Foundation 7
+- Foundation 7 (attention queue; this slice is [FOUNDATION_7.md](FOUNDATION_7.md))

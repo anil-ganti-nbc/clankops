@@ -6,6 +6,8 @@ Foundation 5 can attach that observation to the open Mission as an artefact. Git
 
 Foundation 6 records **deployed/runtime** observations as their own evidence. Source HEAD is not deployed HEAD. CI success is not deployment success. Running is not authoritative.
 
+Foundation 7 derives an **attention** queue from that evidence: what you are in danger of forgetting right now, and why. Freshness is metadata, not truth. Attention writes zero ledger events.
+
 ```text
 clankctl brief oem-radar
 ```
@@ -14,7 +16,7 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 6 (deployment & runtime provenance). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron. No remote SSH from ClankOps.
+Foundation 7 (attention queue + evidence freshness). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron. No remote SSH from ClankOps.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 
@@ -64,6 +66,8 @@ python -m clankops --json reconcile clankops
 python -m clankops --json ci capture clankops
 python -m clankops --json ci capture clankops --mission COPS-000011
 python -m clankops --json deployment current oem-radar
+python -m clankops --json attention
+python -m clankops --json attention clankops --no-github
 python -m clankops terminal
 ```
 
@@ -82,6 +86,7 @@ The Terminal is localhost-only and read-only. It does not schedule collection or
 - [Foundation 4 GitHub CI evidence](docs/FOUNDATION_4.md)
 - [Foundation 5 CI artefacts](docs/FOUNDATION_5.md)
 - [Foundation 6 deployment provenance](docs/FOUNDATION_6.md)
+- [Foundation 7 attention queue](docs/FOUNDATION_7.md)
 - [Future scope](docs/FUTURE_SCOPE.md)
 
 ## Tests

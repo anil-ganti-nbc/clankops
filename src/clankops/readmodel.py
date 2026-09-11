@@ -248,6 +248,8 @@ def fleet_home(
     include_github: bool = False,
     inspect_local=None,
     inspect_remote=None,
+    threshold_label: str | None = None,
+    threshold_source: str | None = None,
 ) -> dict[str, Any]:
     instant = _now(store, now)
     open_rows = open_sessions(store, now=instant, stale_after=stale_after)
@@ -321,6 +323,29 @@ def fleet_home(
             row["slug"],
         )
     )
+    from clankops.attention import (
+        DEFAULT_THRESHOLD_LABEL,
+        DEFAULT_THRESHOLD_SOURCE,
+        OPERATOR_THRESHOLD_SOURCE,
+        attention_report,
+    )
+
+    label = threshold_label or (
+        DEFAULT_THRESHOLD_LABEL if stale_after == DEFAULT_STALE else str(stale_after)
+    )
+    source = threshold_source or (
+        DEFAULT_THRESHOLD_SOURCE if stale_after == DEFAULT_STALE else OPERATOR_THRESHOLD_SOURCE
+    )
+    attention = attention_report(
+        store,
+        now=instant,
+        stale_after=stale_after,
+        threshold_label=label,
+        threshold_source=source,
+        include_github=include_github,
+        inspect_local=inspect_local,
+        inspect_remote=inspect_remote,
+    )
     summary = {
         "registered_clanks": len(table),
         "active_missions": state_counts["ACTIVE"],
@@ -337,7 +362,13 @@ def fleet_home(
         "git_aligned": sum(1 for row in table if row.get("reconcile_status") == "aligned"),
         "git_partial": sum(1 for row in table if row.get("reconcile_status") == "partial"),
     }
-    return {"summary": summary, "coverage": coverage, "rows": table, "open_sessions": open_rows}
+    return {
+        "summary": summary,
+        "coverage": coverage,
+        "rows": table,
+        "open_sessions": open_rows,
+        "attention": attention,
+    }
 
 
 def event_summary(event: Any) -> str:
