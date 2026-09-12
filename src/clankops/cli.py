@@ -806,6 +806,93 @@ def cmd_attention(args: argparse.Namespace) -> int:
     return 0
 
 
+def _agent_actor(args: argparse.Namespace) -> str:
+    return (getattr(args, "agent_actor", None) or args.actor or "").strip()
+
+
+def cmd_resume_packet(args: argparse.Namespace) -> int:
+    from clankops.resume import format_resume_text, resume_packet
+
+    store = open_readonly_store(args.db)
+    try:
+        packet = resume_packet(
+            store,
+            args.clank,
+            include_github=not args.no_github,
+        )
+    finally:
+        store.conn.close()
+    if args.json:
+        _print("", as_json=True, payload=packet)
+        return 0
+    _print(format_resume_text(packet), as_json=False)
+    return 0
+
+
+def cmd_agent(args: argparse.Namespace) -> int:
+    from clankops.agent import admit_agent, prepare_agent
+    from clankops.resume import format_resume_text
+
+    actor = _agent_actor(args)
+    action = args.agent_action
+    if action == "prepare":
+        store = open_readonly_store(args.db)
+        try:
+            packet = prepare_agent(
+                store,
+                args.clank,
+                actor=actor,
+                include_github=not args.no_github,
+            )
+        finally:
+            store.conn.close()
+        if args.json:
+            _print("", as_json=True, payload=packet)
+            return 0
+        _print(format_resume_text(packet), as_json=False)
+        return 0
+    if action == "admit":
+        if not getattr(args, "mission", None):
+            raise ValidationError(
+                "agent admit requires --mission (no implicit Mission creation)"
+            )
+        args.actor = actor
+        store = _store(args)
+        try:
+            result = admit_agent(
+                store,
+                args.clank,
+                args.mission,
+                actor=actor,
+                expect_context=getattr(args, "expect_context", None),
+                source=args.source,
+                include_github=not args.no_github,
+            )
+            ctx = _persist_work_context(
+                store, args, result["mission_row"], result["session"]
+            )
+        finally:
+            store.conn.close()
+        payload = {
+            **ctx,
+            "admitted": True,
+            "requested_actor": result["requested_actor"],
+            "context_fingerprint": result["context_fingerprint"],
+            "expect_context": result["expect_context"],
+            "packet": result["packet"],
+        }
+        _print(
+            f"admitted {result['mission']} [{result['mission_state']}] "
+            f"session={result['session_id']} actor={result['requested_actor']}\n"
+            f"Context: {result['context_fingerprint']}\n"
+            + format_powershell_env(ctx),
+            as_json=args.json,
+            payload=payload,
+        )
+        return 0
+    raise ClankOpsError(f"unknown agent action {action}")
+
+
 def cmd_reconcile(args: argparse.Namespace) -> int:
     from clankops.reconcile import reconcile_clank, reconcile_fleet
 
@@ -1070,7 +1157,7 @@ def cmd_terminal(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="clankctl",
-        description="ClankOps development ledger (Foundation 3)",
+        description="ClankOps development ledger",
     )
     parser.add_argument(
         "--db",
@@ -1149,6 +1236,54 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--no-github", action="store_true", help="skip gh; local git only")
     p.set_defaults(func=cmd_attention)
+
+    p = sub.add_parser(
+        "resume-packet",
+        help="derived resume packet (read-only; writes zero ledger events)",
+    )
+    p.add_argument("clank", help="Clank slug or id")
+    p.add_argument("--no-github", action="store_true", help="skip gh; local git only")
+    p.set_defaults(func=cmd_resume_packet)
+
+    agent = sub.add_parser(
+        "agent",
+        help="prepare a resume packet or admit an agent to an explicit Mission",
+    )
+    asub = agent.add_subparsers(dest="agent_action", required=True)
+    p = asub.add_parser(
+        "prepare",
+        help="same canonical packet; classify unfinished Missions; write zero events",
+    )
+    p.add_argument("clank", help="Clank slug or id")
+    p.add_argument(
+        "--actor",
+        dest="agent_actor",
+        help="requesting actor (metadata, not a permission); overrides global --actor",
+    )
+    p.add_argument("--no-github", action="store_true", help="skip gh; local git only")
+    p.set_defaults(func=cmd_agent)
+    p = asub.add_parser(
+        "admit",
+        help="open/resume a Session for an explicit unfinished Mission (does not create one)",
+    )
+    p.add_argument("clank", help="Clank slug or id")
+    p.add_argument(
+        "--mission",
+        required=True,
+        help="unfinished Mission id (COPS-xxxxxx); required, never inferred",
+    )
+    p.add_argument(
+        "--actor",
+        dest="agent_actor",
+        help="admitting actor (metadata, not a permission); overrides global --actor",
+    )
+    p.add_argument(
+        "--expect-context",
+        default=None,
+        help="fail if current packet fingerprint no longer matches (stale-context detection)",
+    )
+    p.add_argument("--no-github", action="store_true", help="skip gh; local git only")
+    p.set_defaults(func=cmd_agent)
 
     p = sub.add_parser(
         "ci",
