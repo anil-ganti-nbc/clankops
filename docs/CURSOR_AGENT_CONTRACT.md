@@ -32,6 +32,17 @@ python -m clankops --actor cursor work start oem-radar "<objective>"
 
 `work resume` never invents a Mission. If one unfinished Mission exists, it is resumed. If several exist, pass the Mission id. Export the printed `$env:CLANKOPS_*` values (or run `scripts/clankops-dev.ps1 resume oem-radar`).
 
+To enter a Clank without the original chat, read the derived packet first:
+
+```text
+python -m clankops --actor cursor resume-packet oem-radar --no-github
+python -m clankops --actor cursor agent prepare oem-radar --no-github
+# if Admission is RESUMABLE (exactly one unfinished Mission), or after choosing --mission:
+python -m clankops --actor cursor agent admit oem-radar --mission COPS-000003
+```
+
+`agent prepare` writes zero events. Several unfinished Missions are `AMBIGUOUS`; none is `NO_UNFINISHED_MISSION` (use `work start` for a new objective). `agent admit` never creates a Mission. See [Foundation 8](FOUNDATION_8.md).
+
 ## Stop / handoff
 
 ```text

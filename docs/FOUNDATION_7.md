@@ -87,7 +87,7 @@ are rendered as text plus icon/shape. Colour is not the only signal.
 
 ## Out of scope
 
-- Foundation 8
+- Foundation 9
 - Mutating Missions or auto-closing Sessions
 - Scheduling product Clanks
 - SSH / live host inventory
