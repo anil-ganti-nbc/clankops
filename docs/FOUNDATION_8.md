@@ -50,12 +50,13 @@ Derived from existing ClankOps state:
 - Clank identity, canonical local path, canonical GitHub identity (Foundation 3
   choice rules; no guessing among ambiguous refs)
 - **Every** unfinished Mission (never `unfinished[0]` as “the” Mission)
-- Mission state, latest checkpoint, exact recorded next action if any
-- Open Sessions with actor and age (all of them)
-- Foundation 7 attention items, unchanged
-- Foundation 3 reconciliation result
-- Latest Foundation 5 `github_ci` artefact **per Mission** (no cross-attribution)
-- Current Foundation 6 deployment surfaces with Mission attribution
+- Latest checkpoint, including backing event actor/source/provenance
+- Foundation 3 reconciliation snapshot (status, comparisons, recorded
+  checkpoint/event source, drift, Mission attribution) — observed once
+- Latest Foundation 5 `github_ci` artefact **per Mission**, including the
+  immutable evidence-binding metadata
+- Current Foundation 6 deployment surfaces with Mission attribution and
+  authority/provenance fields (no credentials or webhook URLs)
 - Open blockers, unfinished tasks, recent decisions for each unfinished Mission
 - Current branch / HEAD / working-tree when locally observable
 - Evidence timestamps and provenance
@@ -82,12 +83,18 @@ admission fails **before** Session creation.
 ## Context fingerprint
 
 `context_fingerprint` is `sha256:` plus a SHA-256 of the packet’s ClankOps
-facts (stable JSON). Ephemeral ages and requested-actor metadata are excluded
-so wall-clock and actor labels do not churn the hash.
+facts (stable JSON). Ephemeral ages, requested-actor metadata, and
+Foundation 7 `CLASS_AGE` / `STALE_OPEN_SESSION` items are excluded so
+wall-clock membership does not churn the hash. Those age items still appear
+unchanged in the packet display.
 
-Identical projection state → identical fingerprint. A relevant state change
-(new checkpoint, new Session, new artefact) changes it. Projection rebuild
-yields an equivalent packet and fingerprint.
+Identical projection and observational facts → identical fingerprint. A
+relevant state change (new checkpoint, new Session, new artefact, Git fact)
+changes it. Projection rebuild yields an equivalent packet and fingerprint.
+
+Packet generation runs **one** Foundation 3 reconciliation snapshot and
+reuses it when deriving Attention for that Clank. Standalone
+`clankctl attention` is unchanged.
 
 ## Launchers
 

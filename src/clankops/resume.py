@@ -10,12 +10,12 @@ import json
 from datetime import datetime
 from typing import Any
 
-from clankops.attention import attention_report
+from clankops.attention import CLASS_AGE, REASON_STALE_OPEN_SESSION, attention_report
 from clankops.ci import CI_ARTIFACT_KIND
 from clankops.deployment import current_deployments
 from clankops.errors import NotFoundError
 from clankops.readmodel import DEFAULT_STALE, open_sessions
-from clankops.reconcile import github_repo_for_clank, reconcile_clank
+from clankops.reconcile import _checkpoint_event, github_repo_for_clank, reconcile_clank
 from clankops.store import Store
 from clankops.timefmt import short_head
 
@@ -64,31 +64,58 @@ def _latest_ci(store: Store, mission_id: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-def _ci_view(row: dict[str, Any] | None) -> dict[str, Any] | None:
+def _ci_view(
+    row: dict[str, Any] | None, *, mission_display: str | None = None
+) -> dict[str, Any] | None:
     if not row:
         return None
     meta = _meta(row)
     return {
         "artifact_id": row.get("artifact_id"),
         "kind": row.get("kind"),
-        "ref": row.get("ref"),
-        "sha": meta.get("sha") or row.get("ref"),
-        "state": meta.get("state"),
-        "created_utc": row.get("created_utc"),
         "source": row.get("source"),
+        "created_utc": row.get("created_utc"),
+        "mission_id": meta.get("mission_id") or row.get("mission_id"),
+        "mission_display": meta.get("mission_display") or mission_display,
+        "checkpoint_id": meta.get("checkpoint_id"),
+        "recorded_sha": meta.get("recorded_sha"),
+        "sha": meta.get("sha") or row.get("ref"),
+        "sha_attribution": meta.get("sha_attribution"),
+        "repo": meta.get("repo"),
+        "state": meta.get("state"),
+        "error": meta.get("error"),
+        "checks_observed": meta.get("checks_observed"),
+        "statuses_observed": meta.get("statuses_observed"),
+        "check_run_total": meta.get("check_run_total"),
+        "checks_complete": meta.get("checks_complete"),
+        "status_total": meta.get("status_total"),
+        "statuses_complete": meta.get("statuses_complete"),
+        "combined_state": meta.get("combined_state"),
+        "runs": meta.get("runs"),
+        "contexts": meta.get("contexts"),
+        "failing_runs": meta.get("failing_runs"),
+        "failing_contexts": meta.get("failing_contexts"),
+        "ref": row.get("ref"),
         "title": row.get("title"),
+        "metadata": meta,
     }
 
 
-def _checkpoint_view(row: dict[str, Any] | None) -> dict[str, Any] | None:
+def _checkpoint_view(store: Store, row: dict[str, Any] | None) -> dict[str, Any] | None:
     if not row:
         return None
     next_action = row.get("next_action")
     if next_action is not None:
         next_action = str(next_action).strip() or None
+    event = _checkpoint_event(store, row)
+    provenance = dict(event.provenance) if event is not None and event.provenance else None
     return {
         "checkpoint_id": row.get("checkpoint_id"),
         "recorded_utc": row.get("recorded_utc"),
+        "event_id": row.get("event_id"),
+        "actor": event.actor if event else None,
+        "source": event.source if event else None,
+        "provenance": provenance,
         "next_action": next_action,
         "completed": row.get("completed"),
         "current_work": row.get("current_work"),
@@ -112,9 +139,26 @@ def _strip_for_fingerprint(value: Any) -> Any:
     return value
 
 
+def _attention_for_fingerprint(items: list[Any]) -> list[Any]:
+    """Age-derived attention membership is wall-clock, not an observational fact."""
+    kept = []
+    for item in items:
+        if not isinstance(item, dict):
+            kept.append(item)
+            continue
+        if item.get("class") == CLASS_AGE:
+            continue
+        if item.get("reason_code") == REASON_STALE_OPEN_SESSION:
+            continue
+        kept.append(item)
+    return kept
+
+
 def context_fingerprint(packet: dict[str, Any]) -> str:
     """Hash ClankOps facts in the packet. Ages and actor metadata are not facts."""
-    facts = _strip_for_fingerprint(packet)
+    working = dict(packet)
+    working["attention"] = _attention_for_fingerprint(working.get("attention") or [])
+    facts = _strip_for_fingerprint(working)
     blob = json.dumps(
         facts, sort_keys=True, separators=(",", ":"), default=str, ensure_ascii=True
     )
@@ -150,7 +194,7 @@ def _mission_rows(
     rows = []
     for mission in unfinished:
         checkpoint = store.latest_checkpoint(mission["clank_id"], mission["mission_id"])
-        view = _checkpoint_view(checkpoint)
+        view = _checkpoint_view(store, checkpoint)
         blockers = [
             {
                 "blocker_id": row["blocker_id"],
@@ -210,7 +254,10 @@ def _mission_rows(
                 "updated_utc": mission.get("updated_utc"),
                 "checkpoint": view,
                 "next_action": view["next_action"] if view else None,
-                "ci": _ci_view(_latest_ci(store, mission["mission_id"])),
+                "ci": _ci_view(
+                    _latest_ci(store, mission["mission_id"]),
+                    mission_display=mission["display_id"],
+                ),
                 "blockers": blockers,
                 "tasks": tasks,
                 "decisions": decisions,
@@ -258,7 +305,15 @@ def _deployment_rows(store: Store, clank_id: str, now: datetime) -> list[dict[st
                 "sha_short": row.get("sha_short") or short_head(row.get("deployed_sha")),
                 "deployed": row.get("deployed"),
                 "running": row.get("running"),
+                "scheduler": row.get("scheduler"),
+                "scheduler_cadence": row.get("scheduler_cadence"),
+                "state_store": row.get("state_store"),
+                "collection_authority": row.get("collection_authority"),
+                "notification_authority": row.get("notification_authority"),
+                "webhook_configured": row.get("webhook_configured"),
                 "observed_at": row.get("observed_at") or row.get("created_utc"),
+                "observed_how": row.get("observed_how"),
+                "observer": row.get("observer"),
                 "age": row.get("age"),
                 "source": row.get("source"),
             }
@@ -282,10 +337,33 @@ def _observation(rec: dict[str, Any]) -> dict[str, Any]:
 
 
 def _reconcile_view(rec: dict[str, Any]) -> dict[str, Any]:
+    recorded = rec.get("recorded") or {}
+    github = rec.get("observed_github")
+    github_view = None
+    if isinstance(github, dict):
+        github_view = {
+            "ok": github.get("ok"),
+            "error": github.get("error"),
+            "repo": github.get("repo"),
+            "source": github.get("source"),
+            "default_branch": github.get("default_branch"),
+            "default_branch_head": github.get("default_branch_head"),
+        }
     return {
         "status": rec.get("status"),
+        "comparisons": rec.get("comparisons") or {},
+        "recorded": {
+            "checkpoint_id": recorded.get("checkpoint_id"),
+            "checkpoint_utc": recorded.get("checkpoint_utc"),
+            "event_source": recorded.get("event_source"),
+            "branch": recorded.get("branch"),
+            "head": recorded.get("head"),
+            "working_tree": recorded.get("working_tree"),
+            "git_evidence": recorded.get("git_evidence"),
+        },
         "drift": rec.get("drift") or [],
         "mission_display": rec.get("mission_display"),
+        "observed_github": github_view,
         "head_short_recorded": rec.get("head_short_recorded"),
         "head_short_local": rec.get("head_short_local"),
     }
@@ -320,6 +398,7 @@ def resume_packet(
         include_github=include_github,
         inspect_local=inspect_local,
         inspect_remote=inspect_remote,
+        reconcile=rec,
     )
     open_for = [
         row

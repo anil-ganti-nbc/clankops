@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
 from clankops.agent import admit_agent, prepare_agent
-from clankops.attention import attention_report
+from clankops.attention import (
+    CLASS_AGE,
+    REASON_GIT_DRIFT,
+    REASON_MISSION_NO_NEXT_ACTION,
+    REASON_STALE_OPEN_SESSION,
+    attention_report,
+)
+from clankops.ci import capture_ci
 from clankops.cli import main
 from clankops.clock import FrozenClock
 from clankops.deployment import capture_deployment
+from clankops.enums import EventSource
 from clankops.errors import InvalidTransitionError, NotFoundError, ValidationError
 from clankops.projections import rebuild_projections
 from clankops.readmodel import ledger_fingerprint
@@ -27,8 +36,9 @@ from clankops.store import open_readonly_store, open_store
 
 from test_foundation2 import T0
 from test_foundation3 import CANON, HEAD, OTHER, _github, _local, _seed
+from test_foundation5 import _remote_with_checks
 from test_foundation6 import HETZNER_SURFACE, NAS_SURFACE, _hetzner, _nas
-from test_foundation7 import REASON_MISSION_NO_NEXT_ACTION, _attach_ci
+from test_foundation7 import _attach_ci
 
 FORBIDDEN_SUMMARY_WORDS = ("in summary", "the agent should", "health score")
 
@@ -493,3 +503,184 @@ def test_example_adapters_are_thin_and_contain_no_credentials() -> None:
         assert "json" in lower
         for word in forbidden:
             assert word not in lower, f"{name} contains {word}"
+
+
+def test_stale_session_attention_does_not_churn_context_fingerprint(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "age.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(store, remotes=[CANON], branch="main", head=HEAD)
+    store.record_checkpoint(mission["display_id"], next_action="keep going")
+    at_23 = resume_packet(
+        store, "oem-radar", include_github=False, now=T0 + timedelta(hours=23)
+    )
+    at_25 = resume_packet(
+        store, "oem-radar", include_github=False, now=T0 + timedelta(hours=25)
+    )
+    assert REASON_STALE_OPEN_SESSION not in [
+        item["reason_code"] for item in at_23["attention"]
+    ]
+    stale_items = [
+        item for item in at_25["attention"] if item["reason_code"] == REASON_STALE_OPEN_SESSION
+    ]
+    assert len(stale_items) == 1
+    assert stale_items[0]["class"] == CLASS_AGE
+    assert at_23["context_fingerprint"] == at_25["context_fingerprint"]
+    store.record_checkpoint(mission["display_id"], next_action="changed after clock")
+    after = resume_packet(
+        store, "oem-radar", include_github=False, now=T0 + timedelta(hours=25)
+    )
+    assert after["context_fingerprint"] != at_25["context_fingerprint"]
+    store.conn.close()
+
+
+def test_packet_preserves_evidence_provenance(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "prov.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(
+        store,
+        path=str(tmp_path / "oem-radar"),
+        remotes=[CANON],
+        branch="main",
+        head=HEAD,
+        working_tree="clean",
+    )
+    store.record_checkpoint(
+        mission["display_id"],
+        next_action="keep going",
+        branch="main",
+        head=HEAD,
+        working_tree="clean",
+        source=EventSource.AGENT_REPORT,
+        git_evidence={
+            "source": EventSource.LOCAL_GIT,
+            "branch": "main",
+            "head": HEAD,
+            "working_tree": "clean",
+        },
+    )
+    captured = capture_ci(
+        store,
+        "oem-radar",
+        inspect_local=lambda _path: _local("main", HEAD, dirty=False),
+        inspect_remote=_remote_with_checks(state="failure"),
+    )
+    capture_deployment(store, "oem-radar", **_hetzner())
+    packet = resume_packet(
+        store,
+        "oem-radar",
+        include_github=True,
+        now=T0,
+        inspect_local=lambda _path: _local("main", HEAD, dirty=False),
+        inspect_remote=_github(),
+    )
+    checkpoint = packet["unfinished_missions"][0]["checkpoint"]
+    assert checkpoint["source"] == EventSource.AGENT_REPORT
+    assert checkpoint["actor"] == "cursor"
+    assert checkpoint["provenance"]
+    assert checkpoint["checkpoint_id"]
+    assert checkpoint["recorded_utc"]
+    assert packet["observation"]["source"] == EventSource.LOCAL_GIT
+    rec = packet["reconcile"]
+    assert rec["recorded"]["event_source"] == EventSource.AGENT_REPORT
+    assert rec["recorded"]["git_evidence"]["source"] == EventSource.LOCAL_GIT
+    assert rec["observed_github"]["source"] in {EventSource.GITHUB, "GITHUB"}
+    assert rec["comparisons"]
+    assert rec["mission_display"] == mission["display_id"]
+    github_sources = {
+        (rec["comparisons"].get(field) or {}).get("source")
+        for field in ("branch", "head", "working_tree")
+    }
+    assert EventSource.LOCAL_GIT in github_sources or EventSource.GITHUB in github_sources
+    ci = packet["unfinished_missions"][0]["ci"]
+    assert ci["source"] == EventSource.CI
+    assert ci["artifact_id"] == captured["artifact"]["artifact_id"]
+    assert ci["mission_id"] == mission["mission_id"]
+    assert ci["mission_display"] == mission["display_id"]
+    assert ci["checkpoint_id"]
+    assert ci["recorded_sha"] == HEAD
+    assert ci["sha"]
+    assert ci["sha_attribution"]
+    assert ci["repo"]
+    assert ci["state"] == "failure"
+    assert "checks_observed" in ci
+    assert "statuses_observed" in ci
+    assert ci["metadata"]["sha_attribution"] == ci["sha_attribution"]
+    dep = packet["deployments"][0]
+    assert dep["source"] == EventSource.DEPLOYMENT
+    assert dep["observed_how"]
+    assert dep["observer"]
+    assert dep["observed_at"]
+    assert dep["surface_id"] == HETZNER_SURFACE
+    assert dep["mission_id"] == mission["mission_id"]
+    assert dep["deployed_sha"]
+    assert dep["deployed"]
+    assert dep["running"]
+    assert dep["scheduler"]
+    assert dep["collection_authority"]
+    assert dep["notification_authority"]
+    assert dep["webhook_configured"]
+    assert dep["state_store"]
+    blob = json.dumps(packet, default=str)
+    assert "discord.com/api/webhooks" not in blob
+    assert "ghp_" not in blob
+    store.conn.close()
+
+
+def test_resume_packet_observes_each_plane_once(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "once.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(
+        store,
+        path=str(tmp_path / "oem-radar"),
+        remotes=[CANON],
+        branch="main",
+        head=HEAD,
+        working_tree="clean",
+    )
+    store.record_checkpoint(
+        mission["display_id"],
+        next_action="keep going",
+        branch="main",
+        head=HEAD,
+        working_tree="clean",
+    )
+    local_calls: list[str] = []
+    remote_calls: list[str] = []
+
+    def inspect_local(_path):
+        local_calls.append(_path)
+        if len(local_calls) == 1:
+            return _local("main", OTHER, dirty=False)
+        return _local("main", HEAD, dirty=False)
+
+    def inspect_remote(repo):
+        remote_calls.append(repo)
+        if len(remote_calls) == 1:
+            return _github(default_head=OTHER)(repo)
+        return _github(default_head=HEAD)(repo)
+
+    packet = resume_packet(
+        store,
+        "oem-radar",
+        include_github=True,
+        now=T0,
+        inspect_local=inspect_local,
+        inspect_remote=inspect_remote,
+    )
+    assert len(local_calls) == 1
+    assert len(remote_calls) == 1
+    assert packet["reconcile"]["status"] == "drift"
+    drift_codes = [item["reason_code"] for item in packet["attention"]]
+    assert REASON_GIT_DRIFT in drift_codes
+    drift_items = [item for item in packet["attention"] if item["reason_code"] == REASON_GIT_DRIFT]
+    assert packet["reconcile"]["drift"]
+    assert drift_items[0]["evidence"]["observed"] == packet["reconcile"]["drift"][0]["observed"]
+    standalone_local: list[str] = []
+    standalone = attention_report(
+        store,
+        "oem-radar",
+        now=T0,
+        include_github=False,
+        inspect_local=lambda path: standalone_local.append(path) or _local("main", HEAD, dirty=False),
+    )
+    assert len(standalone_local) == 1
+    assert REASON_GIT_DRIFT not in [item["reason_code"] for item in standalone["items"]]
+    store.conn.close()
+
