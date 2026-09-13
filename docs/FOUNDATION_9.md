@@ -94,14 +94,20 @@ to recover:
 - event source
 - launch timestamp (`started_utc`)
 
+Managed launch creates that Session with an atomic **fresh-or-fail**
+write (`BEGIN IMMEDIATE`) scoped to the selected Mission and actor. It
+does not prove freshness by counting `SESSION_STARTED` events across the
+ledger. An unrelated Session starting elsewhere cannot fail a valid
+launch. Two concurrent launches for the same Mission and actor yield
+exactly one Session and one spawn; the other refuses before spawn.
+
 Raw `agent admit` without `--launcher` still works (nullable launcher
 column). Foundation 1 still reuses an already-open Session for the same
 actor on `agent admit` / `work resume`. **Managed `agent launch` does
 not.** It requires a fresh `SESSION_STARTED` for that launch, carrying
 actor, launcher, context fingerprint, source, mission, and session id.
-The projected Session must match the child environment exactly. A paused
-Mission that is launched emits a new Session with this launch’s
-provenance. An ACTIVE Mission with no same-actor open Session does too.
+Provenance is verified from **that Session's own** `SESSION_STARTED`
+event. The projected Session must match the child environment exactly.
 
 ## Environment contract
 

@@ -12,7 +12,7 @@ import subprocess
 from datetime import datetime
 from typing import Any, Callable, Mapping, Sequence
 
-from clankops.agent import admit_agent, prepare_agent, require_actor
+from clankops.agent import evaluate_admission, prepare_agent, require_actor
 from clankops.enums import EventType
 from clankops.errors import ValidationError
 from clankops.resume import (
@@ -102,17 +102,7 @@ def _require_launch_session(
     launcher: str,
     context_fingerprint: str,
     mission_id: str,
-    started_before: int,
 ) -> dict[str, Any]:
-    started_after = store.conn.execute(
-        "SELECT COUNT(*) AS n FROM events WHERE event_type = ?",
-        (EventType.SESSION_STARTED,),
-    ).fetchone()["n"]
-    if int(started_after) != started_before + 1:
-        raise ValidationError(
-            "managed launch did not emit SESSION_STARTED; refusing to claim "
-            "launcher/fingerprint provenance for a reused Session"
-        )
     events = store.conn.execute(
         """
         SELECT payload_json, provenance_json, source, actor, mission_id, session_id
@@ -214,27 +204,28 @@ def launch_agent(
     )
     selected = _select_mission(packet, mission)
     expected = (expect_context or "").strip() or packet["context_fingerprint"]
-    _refuse_existing_open_session(store, mission=selected, actor=requested)
-    started_before = int(
-        store.conn.execute(
-            "SELECT COUNT(*) AS n FROM events WHERE event_type = ?",
-            (EventType.SESSION_STARTED,),
-        ).fetchone()["n"]
-    )
-    admitted = admit_agent(
+    evaluated = evaluate_admission(
         store,
         clank,
         selected,
         actor=requested,
         expect_context=expected,
-        source=source,
-        launcher=launcher_id,
         now=now,
         include_github=include_github,
         inspect_local=inspect_local,
         inspect_remote=inspect_remote,
     )
-    session_id = admitted.get("session_id")
+    _refuse_existing_open_session(store, mission=selected, actor=requested)
+    opened = store.start_fresh_launch_session(
+        evaluated["mission_row"]["mission_id"],
+        actor=requested,
+        source=source,
+        launcher=launcher_id,
+        context_fingerprint=evaluated["context_fingerprint"],
+    )
+    session = opened["session"]
+    mission_row = opened["mission"]
+    session_id = session.get("session_id")
     if not session_id:
         raise ValidationError("admission returned no Session identity; refusing to launch")
     _require_launch_session(
@@ -242,21 +233,20 @@ def launch_agent(
         session_id=str(session_id),
         actor=requested,
         launcher=launcher_id,
-        context_fingerprint=str(admitted["context_fingerprint"]),
-        mission_id=str(admitted["mission_id"]),
-        started_before=started_before,
+        context_fingerprint=str(evaluated["context_fingerprint"]),
+        mission_id=str(mission_row["mission_id"]),
     )
     ident = packet.get("identity") or {}
     child_env = child_environ(
         environ if environ is not None else os.environ,
         clank_slug=str(ident.get("slug") or clank),
         clank_id=str(ident.get("clank_id") or ""),
-        mission_display=str(admitted["mission"]),
-        mission_id=str(admitted["mission_id"]),
+        mission_display=str(mission_row["display_id"]),
+        mission_id=str(mission_row["mission_id"]),
         session_id=str(session_id),
         actor=requested,
         launcher=launcher_id,
-        context_fingerprint=str(admitted["context_fingerprint"]),
+        context_fingerprint=str(evaluated["context_fingerprint"]),
         db=db,
     )
     run = runner or subprocess.run
@@ -268,11 +258,11 @@ def launch_agent(
         "exit_code": exit_code,
         "requested_actor": requested,
         "launcher": launcher_id,
-        "mission": admitted["mission"],
-        "mission_id": admitted["mission_id"],
-        "mission_state": admitted["mission_state"],
+        "mission": mission_row["display_id"],
+        "mission_id": mission_row["mission_id"],
+        "mission_state": mission_row["state"],
         "session_id": session_id,
-        "context_fingerprint": admitted["context_fingerprint"],
+        "context_fingerprint": evaluated["context_fingerprint"],
         "packet": packet,
         "env": {
             key: child_env[key]

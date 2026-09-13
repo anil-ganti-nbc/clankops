@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,7 @@ from clankops.launch import launch_agent
 from clankops.projections import dump_projection_state, rebuild_projections
 from clankops.readmodel import ledger_fingerprint, open_sessions
 from clankops.resume import STATUS_AMBIGUOUS, STATUS_NO_UNFINISHED_MISSION, STATUS_RESUMABLE
-from clankops.store import open_store
+from clankops.store import Store, open_store
 
 from test_foundation2 import T0
 from test_foundation3 import _seed
@@ -600,4 +601,144 @@ def test_standalone_prepare_status_values_unchanged(tmp_path: Path) -> None:
     assert prepare_agent(store, "oem-radar", actor="cursor", include_github=False, now=T0)[
         "admission"
     ]["status"] == STATUS_NO_UNFINISHED_MISSION
+    store.conn.close()
+
+
+def test_unrelated_session_elsewhere_does_not_fail_managed_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = tmp_path / "unrelated.db"
+    store = open_store(db, actor="cursor", clock=FrozenClock(T0))
+    radar = _paused(store)
+    store.register_clank("watch-clank")
+    watch = store.start_mission("watch-clank", "other track")
+    store.conn.close()
+    original = Store.start_fresh_launch_session
+
+    def interfere(self, *args, **kwargs):
+        other = open_store(db, actor="other", clock=FrozenClock(T0))
+        other.start_session(watch["mission_id"], actor="other")
+        other.conn.close()
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Store, "start_fresh_launch_session", interfere)
+    store = open_store(db, actor="cursor", clock=FrozenClock(T0))
+    runner = FakeProc()
+    result = launch_agent(
+        store,
+        "oem-radar",
+        actor="cursor",
+        launcher="cursor",
+        command=["agent"],
+        include_github=False,
+        now=T0,
+        environ={},
+        runner=runner,
+    )
+    assert result["launched"] is True
+    assert len(runner.calls) == 1
+    row = store.resolve_session(result["session_id"])
+    assert row["launcher"] == "cursor"
+    assert row["mission_id"] == radar["mission_id"]
+    started = [event for event in _session_started(store) if event.session_id == result["session_id"]]
+    assert len(started) == 1
+    assert started[0].payload.get("launcher") == "cursor"
+    store.conn.close()
+
+
+def test_concurrent_same_actor_launches_create_one_session_and_one_spawn(tmp_path: Path) -> None:
+    db = tmp_path / "conc.db"
+    setup = open_store(db, actor="cursor", clock=FrozenClock(T0))
+    mission = _paused(setup)
+    setup.conn.close()
+    barrier = threading.Barrier(2)
+    outcomes: list[tuple[str, object]] = []
+    lock = threading.Lock()
+
+    def run() -> None:
+        store = open_store(db, actor="cursor")
+        runner = FakeProc()
+        try:
+            barrier.wait(timeout=10)
+            result = launch_agent(
+                store,
+                "oem-radar",
+                actor="cursor",
+                launcher="cursor",
+                command=["agent"],
+                include_github=False,
+                environ={},
+                runner=runner,
+            )
+            with lock:
+                outcomes.append(("ok", result, runner))
+        except ValidationError as exc:
+            with lock:
+                outcomes.append(("err", exc, runner))
+        finally:
+            store.conn.close()
+
+    threads = [threading.Thread(target=run), threading.Thread(target=run)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+        assert not thread.is_alive()
+    wins = [row for row in outcomes if row[0] == "ok"]
+    losses = [row for row in outcomes if row[0] == "err"]
+    assert len(wins) == 1
+    assert len(losses) == 1
+    assert len(wins[0][2].calls) == 1
+    assert losses[0][2].calls == []
+    assert "open Session already exists" in str(losses[0][1])
+    store = open_store(db, actor="cursor")
+    opened = _open_session_ids(store, mission["clank_id"])
+    assert opened == [wins[0][1]["session_id"]]
+    row = store.resolve_session(wins[0][1]["session_id"])
+    assert row["launcher"] == "cursor"
+    store.conn.close()
+
+
+def test_concurrent_different_actors_both_launch(tmp_path: Path) -> None:
+    db = tmp_path / "actors.db"
+    setup = open_store(db, actor="cursor", clock=FrozenClock(T0))
+    mission = _paused(setup)
+    setup.conn.close()
+    barrier = threading.Barrier(2)
+    outcomes: list[tuple[str, dict, FakeProc]] = []
+    lock = threading.Lock()
+
+    def run(actor: str) -> None:
+        store = open_store(db, actor=actor)
+        runner = FakeProc()
+        barrier.wait(timeout=10)
+        result = launch_agent(
+            store,
+            "oem-radar",
+            actor=actor,
+            launcher=actor,
+            command=["agent"],
+            include_github=False,
+            environ={},
+            runner=runner,
+        )
+        with lock:
+            outcomes.append((actor, result, runner))
+        store.conn.close()
+
+    threads = [
+        threading.Thread(target=run, args=("cursor",)),
+        threading.Thread(target=run, args=("glm",)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+        assert not thread.is_alive()
+    assert {row[0] for row in outcomes} == {"cursor", "glm"}
+    assert all(row[2].calls for row in outcomes)
+    ids = {row[1]["session_id"] for row in outcomes}
+    assert len(ids) == 2
+    store = open_store(db, actor="cursor")
+    assert set(_open_session_ids(store, mission["clank_id"])) == ids
     store.conn.close()

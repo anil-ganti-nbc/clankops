@@ -46,25 +46,19 @@ def prepare_agent(
     return packet
 
 
-def admit_agent(
+def evaluate_admission(
     store: Store,
     clank: str,
     mission: str,
     *,
     actor: str | None,
     expect_context: str | None = None,
-    source: str | None = None,
-    launcher: str | None = None,
     now: datetime | None = None,
     include_github: bool = True,
     inspect_local=None,
     inspect_remote=None,
 ) -> dict[str, Any]:
-    """Open/resume a Session for an explicit unfinished Mission.
-
-    Computes the packet before any mutation so --expect-context can fail
-    loudly against stale facts. Does not create a Mission.
-    """
+    """Zero-write ownership and stale-context check. Does not open a Session."""
     requested = require_actor(actor)
     detail = store.clank_detail(clank)
     mission_row = store.resolve_mission(mission)
@@ -89,24 +83,64 @@ def admit_agent(
             f"stale context: expected {expected} got {current}. "
             "Re-run agent prepare; refusing to admit against stale context."
         )
+    return {
+        "requested_actor": requested,
+        "packet": packet,
+        "mission_row": mission_row,
+        "context_fingerprint": current,
+        "expect_context": expected,
+    }
+
+
+def admit_agent(
+    store: Store,
+    clank: str,
+    mission: str,
+    *,
+    actor: str | None,
+    expect_context: str | None = None,
+    source: str | None = None,
+    launcher: str | None = None,
+    now: datetime | None = None,
+    include_github: bool = True,
+    inspect_local=None,
+    inspect_remote=None,
+) -> dict[str, Any]:
+    """Open/resume a Session for an explicit unfinished Mission.
+
+    Computes the packet before any mutation so --expect-context can fail
+    loudly against stale facts. Does not create a Mission. May reuse an
+    already-open Session for this actor (Foundation 8).
+    """
+    evaluated = evaluate_admission(
+        store,
+        clank,
+        mission,
+        actor=actor,
+        expect_context=expect_context,
+        now=now,
+        include_github=include_github,
+        inspect_local=inspect_local,
+        inspect_remote=inspect_remote,
+    )
     opened = store.open_work_session(
-        mission_row["mission_id"],
-        actor=requested,
+        evaluated["mission_row"]["mission_id"],
+        actor=evaluated["requested_actor"],
         source=source,
         launcher=launcher,
-        context_fingerprint=current,
+        context_fingerprint=evaluated["context_fingerprint"],
     )
     return {
         "admitted": True,
-        "requested_actor": requested,
+        "requested_actor": evaluated["requested_actor"],
         "launcher": (launcher or "").strip() or None,
-        "context_fingerprint": current,
-        "expect_context": expected,
+        "context_fingerprint": evaluated["context_fingerprint"],
+        "expect_context": evaluated["expect_context"],
         "mission": opened["mission"]["display_id"],
         "mission_id": opened["mission"]["mission_id"],
         "mission_state": opened["mission"]["state"],
         "session_id": opened["session"]["session_id"],
         "session": opened["session"],
         "mission_row": opened["mission"],
-        "packet": packet,
+        "packet": evaluated["packet"],
     }
