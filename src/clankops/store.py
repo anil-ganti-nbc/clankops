@@ -577,6 +577,8 @@ class Store:
         actor: str | None = None,
         source: str | EventSource | None = None,
         commit: bool = True,
+        launcher: str | None = None,
+        context_fingerprint: str | None = None,
     ) -> dict[str, Any]:
         row = self.resolve_mission(mission)
         if row["state"] != MissionState.ACTIVE:
@@ -585,14 +587,25 @@ class Store:
             )
         session_id = new_id()
         actor = actor or self.default_actor
+        payload: dict[str, Any] = {"actor": actor}
+        provenance: dict[str, Any] = {"recorder": "clankops.store"}
+        launcher_id = (launcher or "").strip() or None
+        fingerprint = (context_fingerprint or "").strip() or None
+        if launcher_id:
+            payload["launcher"] = launcher_id
+            provenance["launcher"] = launcher_id
+        if fingerprint:
+            payload["context_fingerprint"] = fingerprint
+            provenance["context_fingerprint"] = fingerprint
         self._emit(
             EventType.SESSION_STARTED,
-            {"actor": actor},
+            payload,
             actor=actor,
             source=source,
             clank_id=row["clank_id"],
             mission_id=row["mission_id"],
             session_id=session_id,
+            provenance=provenance,
             bind_session=False,
         )
         if commit:
@@ -726,6 +739,8 @@ class Store:
             row["mission_id"],
             actor=actor,
             source=source,
+            launcher=kwargs.get("launcher"),
+            context_fingerprint=kwargs.get("context_fingerprint"),
         )
         result["session_id"] = session["session_id"]
         return result
@@ -1476,6 +1491,8 @@ class Store:
         *,
         actor: str | None = None,
         source: str | EventSource | None = None,
+        launcher: str | None = None,
+        context_fingerprint: str | None = None,
     ) -> dict[str, Any]:
         """Resume an existing Mission into an open Session for this actor."""
         row = self.resolve_mission(mission)
@@ -1485,7 +1502,13 @@ class Store:
                 f"mission {row['display_id']} is {row['state']}; start a new Mission instead of resuming"
             )
         if row["state"] in {MissionState.PAUSED, MissionState.BLOCKED, MissionState.PLANNED}:
-            result = self.resume_mission(row["mission_id"], actor=actor, source=source)
+            result = self.resume_mission(
+                row["mission_id"],
+                actor=actor,
+                source=source,
+                launcher=launcher,
+                context_fingerprint=context_fingerprint,
+            )
             session = self.resolve_session(result["session_id"])
             return {"mission": result, "session": session}
         existing = self.resolve_active_session(
@@ -1496,7 +1519,13 @@ class Store:
         if existing:
             session = self.resolve_session(existing)
         else:
-            session = self.start_session(row["mission_id"], actor=actor, source=source)
+            session = self.start_session(
+                row["mission_id"],
+                actor=actor,
+                source=source,
+                launcher=launcher,
+                context_fingerprint=context_fingerprint,
+            )
         return {"mission": self.resolve_mission(row["mission_id"]), "session": session}
 
     def handoff_mission(

@@ -54,6 +54,7 @@ def admit_agent(
     actor: str | None,
     expect_context: str | None = None,
     source: str | None = None,
+    launcher: str | None = None,
     now: datetime | None = None,
     include_github: bool = True,
     inspect_local=None,
@@ -92,10 +93,13 @@ def admit_agent(
         mission_row["mission_id"],
         actor=requested,
         source=source,
+        launcher=launcher,
+        context_fingerprint=current,
     )
     return {
         "admitted": True,
         "requested_actor": requested,
+        "launcher": (launcher or "").strip() or None,
         "context_fingerprint": current,
         "expect_context": expected,
         "mission": opened["mission"]["display_id"],

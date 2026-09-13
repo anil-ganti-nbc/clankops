@@ -36,6 +36,9 @@ Ideas noticed during Foundation 0. None of these are implemented. Do not treat t
   `clankctl agent prepare`, `clankctl agent admit`) from existing ledger
   facts. It does not summarise with an LLM, create Missions implicitly, or
   treat agent identity as a permission.
+- Foundation 9 is the managed launch gate (`clankctl agent launch`):
+  prepare, admit, then spawn. Actor/launcher names remain provenance.
+  Child exit is not a handoff.
 - Inject the [agent logging contract](AGENT_LOGGING_CONTRACT.md) into Cursor/Codex/Claude/GLM/Grok launchers
 - Session auto-start from agent identity
 - Refuse to start Clank work until `brief` has been read
@@ -43,8 +46,10 @@ Ideas noticed during Foundation 0. None of these are implemented. Do not treat t
 
 ## Clank launcher integration
 
-- Index `C:\Users\anil\Clanks\_Launchers` (actual location; `Clanks_\Launchers` does not exist)
-- Record which launcher started which session
+- `C:\Users\anil\Clanks\_Launchers` is dashboard/collection `.cmd` only
+  (inspected in Foundation 9; left unwrapped). `Clanks_\Launchers` does
+  not exist.
+- Record which *collection* launcher started which session
 - Guard against double-click / concurrent collection via launcher metadata (observe only)
 
 ## Standards integration

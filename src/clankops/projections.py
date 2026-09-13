@@ -140,12 +140,28 @@ def _apply_mission_state_changed(conn: sqlite3.Connection, event: Event) -> None
 
 
 def _apply_session_started(conn: sqlite3.Connection, event: Event) -> None:
+    payload = event.payload or {}
+    provenance = event.provenance or {}
+    launcher = payload.get("launcher") or provenance.get("launcher")
+    fingerprint = payload.get("context_fingerprint") or provenance.get("context_fingerprint")
     conn.execute(
         """
-        INSERT INTO sessions (session_id, clank_id, mission_id, actor, started_utc, ended_utc)
-        VALUES (?, ?, ?, ?, ?, NULL)
+        INSERT INTO sessions (
+            session_id, clank_id, mission_id, actor, started_utc, ended_utc,
+            launcher, context_fingerprint, source
+        )
+        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)
         """,
-        (event.session_id, event.clank_id, event.mission_id, event.actor, event.ts_utc),
+        (
+            event.session_id,
+            event.clank_id,
+            event.mission_id,
+            event.actor,
+            event.ts_utc,
+            (str(launcher).strip() or None) if launcher else None,
+            (str(fingerprint).strip() or None) if fingerprint else None,
+            event.source,
+        ),
     )
 
 

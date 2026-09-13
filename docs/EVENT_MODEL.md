@@ -31,7 +31,7 @@ Corrections are new events. Existing events are never silently edited to represe
 | `CLANK_LIFECYCLE_CHANGED` | lifecycle, from_lifecycle |
 | `MISSION_CREATED` | display_id, objective, state |
 | `MISSION_STATE_CHANGED` | from_state, to_state, optional reason / superseded_by |
-| `SESSION_STARTED` | actor |
+| `SESSION_STARTED` | actor, optional launcher, optional context_fingerprint |
 | `SESSION_ENDED` | — |
 | `CHECKPOINT_RECORDED` | completed, current_work, next_action, outstanding, blockers, tests, optional branch/head/working_tree, optional git_evidence, artifacts, notes |
 | `TASK_CREATED` | task_id, title, state |

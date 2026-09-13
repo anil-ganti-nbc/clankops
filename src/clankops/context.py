@@ -17,11 +17,15 @@ from clankops.errors import ValidationError
 ENV_KEYS = (
     "CLANKOPS_DB",
     "CLANKOPS_ACTOR",
+    "CLANKOPS_CLANK",
     "CLANKOPS_CLANK_ID",
     "CLANKOPS_CLANK_SLUG",
+    "CLANKOPS_MISSION",
     "CLANKOPS_MISSION_ID",
     "CLANKOPS_MISSION_DISPLAY",
     "CLANKOPS_SESSION_ID",
+    "CLANKOPS_CONTEXT_FINGERPRINT",
+    "CLANKOPS_LAUNCHER",
     "CLANKOPS_CLANK_PATH",
     "CLANKOPS_CONTEXT_FILE",
 )
@@ -105,12 +109,22 @@ def build_context(
     env = {
         "CLANKOPS_DB": db_s,
         "CLANKOPS_ACTOR": actor,
+        "CLANKOPS_CLANK": payload["clank_slug"] or "",
         "CLANKOPS_CLANK_ID": payload["clank_id"],
         "CLANKOPS_CLANK_SLUG": payload["clank_slug"] or "",
+        "CLANKOPS_MISSION": payload["mission_display"] or "",
         "CLANKOPS_MISSION_ID": payload["mission_id"],
         "CLANKOPS_MISSION_DISPLAY": payload["mission_display"] or "",
         "CLANKOPS_CONTEXT_FILE": ctx_file,
     }
+    launcher = session.get("launcher")
+    fingerprint = session.get("context_fingerprint")
+    if launcher:
+        payload["launcher"] = launcher
+        env["CLANKOPS_LAUNCHER"] = str(launcher)
+    if fingerprint:
+        payload["context_fingerprint"] = fingerprint
+        env["CLANKOPS_CONTEXT_FINGERPRINT"] = str(fingerprint)
     if payload.get("local_path"):
         env["CLANKOPS_CLANK_PATH"] = str(payload["local_path"])
     if not ended:

@@ -1,16 +1,18 @@
 # Thin ClankOps adapter for GLM.
-# Consumes clankctl JSON. Does not modify GLM. No credentials.
+# Admission classification lives in Python (`clankctl agent launch`).
+# Does not modify GLM. No credentials.
 
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$Clank,
 
-    [ValidateSet("packet", "prepare", "admit")]
-    [string]$Command = "prepare",
+    [ValidateSet("packet", "prepare", "admit", "launch")]
+    [string]$Command = "launch",
 
     [string]$Mission,
     [string]$ExpectContext,
     [string]$Database = $env:CLANKOPS_DB,
+    [string[]]$AgentCommand,
     [switch]$NoGithub
 )
 
@@ -21,6 +23,7 @@ $invoke = @{
     Command      = $Command
     Target       = $Clank
     Actor        = "glm"
+    Launcher     = "glm"
     Json         = $true
     ClankOpsRoot = $root
 }
@@ -28,5 +31,6 @@ if ($Mission) { $invoke.Mission = $Mission }
 if ($ExpectContext) { $invoke.ExpectContext = $ExpectContext }
 if ($Database) { $invoke.Database = $Database }
 if ($NoGithub) { $invoke.NoGithub = $true }
+if ($AgentCommand) { $invoke.AgentCommand = $AgentCommand }
 & $dev @invoke
 exit $LASTEXITCODE

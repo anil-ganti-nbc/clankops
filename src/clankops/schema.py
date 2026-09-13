@@ -302,6 +302,15 @@ CREATE INDEX idx_deploy_obs_clank_surface_id
     ON deployment_observations(clank_id, surface_id, ledger_seq);
 """,
     ),
+    (
+        5,
+        "foundation9_session_launch_provenance",
+        """
+ALTER TABLE sessions ADD COLUMN launcher TEXT;
+ALTER TABLE sessions ADD COLUMN context_fingerprint TEXT;
+ALTER TABLE sessions ADD COLUMN source TEXT;
+""",
+    ),
 ]
 
 PROJECTION_TABLES = (
