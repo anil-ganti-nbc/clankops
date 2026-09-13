@@ -18,7 +18,7 @@ from clankops.enums import EventType, MissionState
 from clankops.errors import ValidationError
 from clankops.events import list_events
 from clankops.launch import launch_agent
-from clankops.projections import rebuild_projections
+from clankops.projections import dump_projection_state, rebuild_projections
 from clankops.readmodel import ledger_fingerprint, open_sessions
 from clankops.resume import STATUS_AMBIGUOUS, STATUS_NO_UNFINISHED_MISSION, STATUS_RESUMABLE
 from clankops.store import open_store
@@ -198,8 +198,14 @@ def test_valid_admission_creates_exactly_one_session_then_invokes(tmp_path: Path
     assert child["CLANKOPS_LAUNCHER"] == actor
     row = store.resolve_session(result["session_id"])
     assert row["launcher"] == actor
+    assert row["launcher"] == child["CLANKOPS_LAUNCHER"]
     assert row["context_fingerprint"] == result["context_fingerprint"]
+    assert row["context_fingerprint"] == child["CLANKOPS_CONTEXT_FINGERPRINT"]
     assert row["source"]
+    started = [event for event in _session_started(store) if event.session_id == result["session_id"]]
+    assert len(started) == 1
+    assert started[0].payload.get("launcher") == actor
+    assert started[0].payload.get("context_fingerprint") == result["context_fingerprint"]
     store.conn.close()
 
 
@@ -381,6 +387,111 @@ def test_missing_command_or_actor_or_launcher_fails_before_spawn(tmp_path: Path)
         )
     assert runner.calls == []
     assert ledger_fingerprint(store) == before
+    store.conn.close()
+
+
+def test_active_mission_without_same_actor_session_creates_fresh_session(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "active-other.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(store)
+    cursor_session = mission["session_id"]
+    started_before = len(_session_started(store))
+    runner = FakeProc()
+    result = launch_agent(
+        store,
+        "oem-radar",
+        actor="glm",
+        launcher="glm",
+        command=["agent"],
+        include_github=False,
+        now=T0,
+        environ={},
+        runner=runner,
+    )
+    assert result["launched"] is True
+    assert result["session_id"] != cursor_session
+    assert len(runner.calls) == 1
+    assert len(_session_started(store)) == started_before + 1
+    child = runner.calls[0]["env"]
+    row = store.resolve_session(result["session_id"])
+    assert row["launcher"] == "glm"
+    assert row["launcher"] == child["CLANKOPS_LAUNCHER"]
+    assert row["context_fingerprint"] == result["context_fingerprint"]
+    assert row["context_fingerprint"] == child["CLANKOPS_CONTEXT_FINGERPRINT"]
+    assert set(_open_session_ids(store, mission["clank_id"])) == {
+        cursor_session,
+        result["session_id"],
+    }
+    cursor = store.resolve_session(cursor_session)
+    assert cursor["ended_utc"] is None
+    assert cursor["launcher"] is None
+    rebuild_projections(store.conn)
+    after = store.resolve_session(result["session_id"])
+    assert after["launcher"] == child["CLANKOPS_LAUNCHER"]
+    assert after["context_fingerprint"] == child["CLANKOPS_CONTEXT_FINGERPRINT"]
+    store.conn.close()
+
+
+def test_active_same_actor_open_session_refuses_before_spawn(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "reuse.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(store)
+    existing = mission["session_id"]
+    before_fp = ledger_fingerprint(store)
+    before_proj = dump_projection_state(store.conn)
+    before_row = dict(store.resolve_session(existing))
+    started_before = len(_session_started(store))
+    checkpoints_before = _event_count(store, EventType.CHECKPOINT_RECORDED)
+    ended_before = _event_count(store, EventType.SESSION_ENDED)
+    transitions_before = _event_count(store, EventType.MISSION_STATE_CHANGED)
+    runner = FakeProc()
+    with pytest.raises(ValidationError, match="open Session already exists"):
+        launch_agent(
+            store,
+            "oem-radar",
+            actor="cursor",
+            launcher="cursor",
+            command=[sys.executable, "-c", "pass"],
+            include_github=False,
+            now=T0,
+            environ={},
+            runner=runner,
+        )
+    assert runner.calls == []
+    assert ledger_fingerprint(store) == before_fp
+    assert dump_projection_state(store.conn) == before_proj
+    after_row = dict(store.resolve_session(existing))
+    assert after_row == before_row
+    assert after_row["ended_utc"] is None
+    assert after_row["launcher"] is None
+    assert after_row["context_fingerprint"] is None
+    assert _open_session_ids(store, mission["clank_id"]) == [existing]
+    assert store.resolve_mission(mission["mission_id"])["state"] == MissionState.ACTIVE
+    assert len(_session_started(store)) == started_before
+    assert _event_count(store, EventType.CHECKPOINT_RECORDED) == checkpoints_before
+    assert _event_count(store, EventType.SESSION_ENDED) == ended_before
+    assert _event_count(store, EventType.MISSION_STATE_CHANGED) == transitions_before
+    store.conn.close()
+
+
+def test_raw_admit_still_reuses_open_same_actor_session(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "raw-reuse.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(store)
+    existing = mission["session_id"]
+    before = ledger_fingerprint(store)
+    result = admit_agent(
+        store,
+        "oem-radar",
+        mission["display_id"],
+        actor="cursor",
+        include_github=False,
+        now=T0,
+        launcher="cursor",
+    )
+    assert result["session_id"] == existing
+    assert result["launcher"] == "cursor"
+    assert ledger_fingerprint(store) == before
+    row = store.resolve_session(existing)
+    assert row["ended_utc"] is None
+    assert row["launcher"] is None
     store.conn.close()
 
 

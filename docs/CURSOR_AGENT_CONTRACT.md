@@ -41,7 +41,7 @@ python -m clankops --actor cursor agent prepare oem-radar --no-github
 python -m clankops --actor cursor agent admit oem-radar --mission COPS-000003
 ```
 
-`agent prepare` writes zero events. Several unfinished Missions are `AMBIGUOUS`; none is `NO_UNFINISHED_MISSION` (use `work start` for a new objective). `agent admit` never creates a Mission. Managed agent start uses `agent launch` (prepare + admit + spawn). See [Foundation 8](FOUNDATION_8.md) and [Foundation 9](FOUNDATION_9.md).
+`agent prepare` writes zero events. Several unfinished Missions are `AMBIGUOUS`; none is `NO_UNFINISHED_MISSION` (use `work start` for a new objective). `agent admit` never creates a Mission. Managed agent start uses `agent launch` (prepare + admit + spawn). If that actor already has an open Session on the Mission, launch refuses; handoff or end it first. See [Foundation 8](FOUNDATION_8.md) and [Foundation 9](FOUNDATION_9.md).
 
 ```text
 python -m clankops --actor cursor agent launch oem-radar --launcher cursor --no-github --command <agent argv...>

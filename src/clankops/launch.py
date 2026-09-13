@@ -6,12 +6,14 @@ Mission completion. Actor and launcher names are provenance, not permission.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from datetime import datetime
 from typing import Any, Callable, Mapping, Sequence
 
 from clankops.agent import admit_agent, prepare_agent, require_actor
+from clankops.enums import EventType
 from clankops.errors import ValidationError
 from clankops.resume import (
     STATUS_AMBIGUOUS,
@@ -63,6 +65,87 @@ def _select_mission(packet: dict[str, Any], mission: str | None) -> str:
     if status == STATUS_RESUMABLE:
         return explicit or admission.get("resumable_mission")
     raise ValidationError(f"unusable admission status: {status or 'unknown'}")
+
+
+def open_session_ids_for_actor(store: Store, *, mission_id: str, actor: str) -> list[str]:
+    rows = store.conn.execute(
+        """
+        SELECT session_id FROM sessions
+        WHERE mission_id = ? AND actor = ? AND ended_utc IS NULL
+        ORDER BY started_utc, session_id
+        """,
+        (mission_id, actor),
+    ).fetchall()
+    return [row["session_id"] for row in rows]
+
+
+def _refuse_existing_open_session(store: Store, *, mission: str, actor: str) -> None:
+    row = store.resolve_mission(mission)
+    existing = open_session_ids_for_actor(
+        store, mission_id=row["mission_id"], actor=actor
+    )
+    if not existing:
+        return
+    listed = ", ".join(existing)
+    raise ValidationError(
+        f"open Session already exists for actor {actor} on {row['display_id']}: {listed}. "
+        "Handoff or end that Session through Foundation 1 before another managed launch. "
+        "Refusing to reuse a Session that would not carry this launch's provenance."
+    )
+
+
+def _require_launch_session(
+    store: Store,
+    *,
+    session_id: str,
+    actor: str,
+    launcher: str,
+    context_fingerprint: str,
+    mission_id: str,
+    started_before: int,
+) -> dict[str, Any]:
+    started_after = store.conn.execute(
+        "SELECT COUNT(*) AS n FROM events WHERE event_type = ?",
+        (EventType.SESSION_STARTED,),
+    ).fetchone()["n"]
+    if int(started_after) != started_before + 1:
+        raise ValidationError(
+            "managed launch did not emit SESSION_STARTED; refusing to claim "
+            "launcher/fingerprint provenance for a reused Session"
+        )
+    events = store.conn.execute(
+        """
+        SELECT payload_json, provenance_json, source, actor, mission_id, session_id
+        FROM events
+        WHERE event_type = ? AND session_id = ?
+        """,
+        (EventType.SESSION_STARTED, session_id),
+    ).fetchall()
+    if len(events) != 1:
+        raise ValidationError(
+            f"managed launch requires exactly one SESSION_STARTED for {session_id}"
+        )
+    event = events[0]
+    payload = json.loads(event["payload_json"] or "{}")
+    provenance = json.loads(event["provenance_json"] or "{}")
+    session = dict(store.resolve_session(session_id))
+    if event["actor"] != actor or session.get("actor") != actor:
+        raise ValidationError("launch Session actor does not match the requesting actor")
+    if event["mission_id"] != mission_id or session.get("mission_id") != mission_id:
+        raise ValidationError("launch Session mission does not match the admitted Mission")
+    if (payload.get("launcher") or provenance.get("launcher")) != launcher:
+        raise ValidationError("SESSION_STARTED launcher does not match this launch")
+    if (payload.get("context_fingerprint") or provenance.get("context_fingerprint")) != context_fingerprint:
+        raise ValidationError("SESSION_STARTED context fingerprint does not match this launch")
+    if not event["source"] or session.get("source") != event["source"]:
+        raise ValidationError("launch Session source is missing from provenance")
+    if session.get("launcher") != launcher:
+        raise ValidationError("projected Session launcher does not match this launch")
+    if session.get("context_fingerprint") != context_fingerprint:
+        raise ValidationError("projected Session fingerprint does not match this launch")
+    if session.get("ended_utc") is not None:
+        raise ValidationError("managed launch Session is already closed")
+    return session
 
 
 def child_environ(
@@ -131,6 +214,13 @@ def launch_agent(
     )
     selected = _select_mission(packet, mission)
     expected = (expect_context or "").strip() or packet["context_fingerprint"]
+    _refuse_existing_open_session(store, mission=selected, actor=requested)
+    started_before = int(
+        store.conn.execute(
+            "SELECT COUNT(*) AS n FROM events WHERE event_type = ?",
+            (EventType.SESSION_STARTED,),
+        ).fetchone()["n"]
+    )
     admitted = admit_agent(
         store,
         clank,
@@ -147,6 +237,15 @@ def launch_agent(
     session_id = admitted.get("session_id")
     if not session_id:
         raise ValidationError("admission returned no Session identity; refusing to launch")
+    _require_launch_session(
+        store,
+        session_id=str(session_id),
+        actor=requested,
+        launcher=launcher_id,
+        context_fingerprint=str(admitted["context_fingerprint"]),
+        mission_id=str(admitted["mission_id"]),
+        started_before=started_before,
+    )
     ident = packet.get("identity") or {}
     child_env = child_environ(
         environ if environ is not None else os.environ,

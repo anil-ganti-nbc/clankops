@@ -34,9 +34,17 @@ Fail closed **before** spawning the external process when:
 - admit fails
 - the returned Session identity is missing
 - `--command` is missing
+- the selected Mission already has an open Session for the same actor
+  (managed launch will not reuse it or overwrite its provenance)
 
 Never silently pick a Mission. Never create a Mission from the launch
 path. Never partially admit and then continue after an error.
+
+Managed launch must never claim launcher or fingerprint provenance that
+is absent from the Session it returns. If an open Session already exists
+for that actor, refuse **before** spawn. Do not auto-close it. Do not
+mutate it. Tell the operator to hand off or end it through Foundation 1.
+Raw `agent admit` may still reuse an open Session (Foundation 8).
 
 Child process exit is **not** a handoff. It does not auto-complete the
 Mission, auto-close the Session, invent next actions, or fabricate a
@@ -87,9 +95,13 @@ to recover:
 - launch timestamp (`started_utc`)
 
 Raw `agent admit` without `--launcher` still works (nullable launcher
-column). Reusing an already-ACTIVE Session for the same actor does not
-emit a second `SESSION_STARTED` (Foundation 1). A paused Mission that is
-admitted/launched emits a new Session with this launch’s provenance.
+column). Foundation 1 still reuses an already-open Session for the same
+actor on `agent admit` / `work resume`. **Managed `agent launch` does
+not.** It requires a fresh `SESSION_STARTED` for that launch, carrying
+actor, launcher, context fingerprint, source, mission, and session id.
+The projected Session must match the child environment exactly. A paused
+Mission that is launched emits a new Session with this launch’s
+provenance. An ACTIVE Mission with no same-actor open Session does too.
 
 ## Environment contract
 
@@ -108,9 +120,11 @@ CLANKOPS_LAUNCHER
 
 Existing `CLANKOPS_CLANK_ID`, `CLANKOPS_CLANK_SLUG`,
 `CLANKOPS_MISSION_DISPLAY`, `CLANKOPS_DB`, `CLANKOPS_CLANK_PATH`, and
-`CLANKOPS_CONTEXT_FILE` remain. Credentials, API keys, tokens, webhook
-URLs, and provider secrets are not exposed and must not be persisted by
-wrappers.
+`CLANKOPS_CONTEXT_FILE` remain. ClankOps does **not add, print, or
+persist** credentials, API keys, tokens, webhook URLs, or provider
+secrets. The child process inherits the parent environment (`os.environ`)
+for ordinary process needs such as `PATH`; that inherited environment is
+a different boundary from ClankOps overlay identifiers.
 
 ## Wrappers
 
