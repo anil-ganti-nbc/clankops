@@ -497,6 +497,7 @@ def attention_report(
     include_github: bool = True,
     inspect_local=None,
     inspect_remote=None,
+    reconcile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Derived attention items. Never mutates the ledger."""
     instant = now or store.clock.now()
@@ -507,13 +508,24 @@ def attention_report(
     for row in targets:
         clank_row = dict(row)
         unfinished = store.unfinished_missions(clank_row["clank_id"])
-        rec = reconcile_clank(
-            store,
-            clank_row["slug"],
-            include_github=include_github,
-            inspect_local=inspect_local,
-            inspect_remote=inspect_remote,
-        )
+        rec = None
+        if (
+            reconcile is not None
+            and clank is not None
+            and (
+                reconcile.get("clank_id") == clank_row["clank_id"]
+                or reconcile.get("slug") == clank_row["slug"]
+            )
+        ):
+            rec = reconcile
+        else:
+            rec = reconcile_clank(
+                store,
+                clank_row["slug"],
+                include_github=include_github,
+                inspect_local=inspect_local,
+                inspect_remote=inspect_remote,
+            )
         rec_mission = _mission_from_reconcile(store, rec)
         open_for = _sessions_for_clank(open_rows, clank_row["clank_id"])
         freshness.append(_freshness(store, clank_row, unfinished, open_for, instant))

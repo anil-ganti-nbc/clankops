@@ -8,6 +8,8 @@ Foundation 6 records **deployed/runtime** observations as their own evidence. So
 
 Foundation 7 derives an **attention** queue from that evidence: what you are in danger of forgetting right now, and why. Freshness is metadata, not truth. Attention writes zero ledger events.
 
+Foundation 8 emits a **derived resume packet** so any development agent can enter an existing Clank without the original chat. Admission never creates a Mission. The packet is not an LLM summary.
+
 ```text
 clankctl brief oem-radar
 ```
@@ -16,7 +18,7 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 7 (attention queue + evidence freshness). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron. No remote SSH from ClankOps.
+Foundation 8 (derived resume packets + agent admission). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron. No remote SSH from ClankOps.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 
@@ -68,6 +70,8 @@ python -m clankops --json ci capture clankops --mission COPS-000011
 python -m clankops --json deployment current oem-radar
 python -m clankops --json attention
 python -m clankops --json attention clankops --no-github
+python -m clankops --json resume-packet clankops --no-github
+python -m clankops --json agent prepare clankops --actor cursor --no-github
 python -m clankops terminal
 ```
 
@@ -87,6 +91,7 @@ The Terminal is localhost-only and read-only. It does not schedule collection or
 - [Foundation 5 CI artefacts](docs/FOUNDATION_5.md)
 - [Foundation 6 deployment provenance](docs/FOUNDATION_6.md)
 - [Foundation 7 attention queue](docs/FOUNDATION_7.md)
+- [Foundation 8 resume packets](docs/FOUNDATION_8.md)
 - [Future scope](docs/FUTURE_SCOPE.md)
 
 ## Tests

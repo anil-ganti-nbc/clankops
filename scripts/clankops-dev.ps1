@@ -6,7 +6,7 @@
 # Use -Database (not -Db): -Db collides with PowerShell -Debug.
 
 param(
-    [ValidateSet("resume", "start", "handoff", "env", "brief")]
+    [ValidateSet("resume", "start", "handoff", "env", "brief", "packet", "prepare", "admit")]
     [string]$Command = "resume",
 
     [string]$Target,
@@ -23,6 +23,10 @@ param(
     [string]$Database = $env:CLANKOPS_DB,
     [string]$ClankOpsRoot,
     [string]$CursorCommand,
+    [string]$Mission,
+    [string]$ExpectContext,
+    [switch]$Json,
+    [switch]$NoGithub,
     [switch]$LaunchCursor
 )
 
@@ -184,11 +188,53 @@ $cli = @("-m", "clankops", "--actor", $Actor)
 if ($Database) { $cli += @("--db", $Database) }
 
 $code = 0
+$githubFlags = @()
+if ($NoGithub) { $githubFlags += "--no-github" }
+
 switch ($Command) {
     "brief" {
         if (-not $Target) { Write-ClankOpsFailure "brief requires a Clank slug." ".\scripts\clankops-dev.ps1 brief oem-radar"; $code = 2; break }
         & $Python @cli brief $Target
         $code = $LASTEXITCODE
+    }
+    "packet" {
+        if (-not $Target) { Write-ClankOpsFailure "packet requires a Clank slug." ".\scripts\clankops-dev.ps1 packet oem-radar"; $code = 2; break }
+        $p = @("resume-packet", $Target) + $githubFlags
+        if ($Json) { $p = @("--json") + $p }
+        & $Python @cli @p
+        $code = $LASTEXITCODE
+    }
+    "prepare" {
+        if (-not $Target) { Write-ClankOpsFailure "prepare requires a Clank slug." ".\scripts\clankops-dev.ps1 prepare oem-radar"; $code = 2; break }
+        $p = @("agent", "prepare", $Target, "--actor", $Actor) + $githubFlags
+        if ($Json) { $p = @("--json") + $p }
+        & $Python @cli @p
+        $code = $LASTEXITCODE
+    }
+    "admit" {
+        if (-not $Target -or -not $Mission) {
+            Write-ClankOpsFailure "admit requires a Clank slug and -Mission." ".\scripts\clankops-dev.ps1 admit oem-radar -Mission COPS-000015"
+            $code = 2
+            break
+        }
+        $p = @("agent", "admit", $Target, "--mission", $Mission, "--actor", $Actor) + $githubFlags
+        if ($ExpectContext) { $p += @("--expect-context", $ExpectContext) }
+        $result = Invoke-ClankOpsJson ($cli + @("--json") + $p)
+        $code = $result.Code
+        if ($code -ne 0) {
+            Write-Host $result.Text
+            break
+        }
+        $payload = $result.Text | ConvertFrom-Json
+        Import-ClankOpsPayloadEnv $payload
+        Write-Host "admitted $($payload.mission_display) session=$($payload.session_id) context=$($payload.context_fingerprint)"
+        if (-not $Json) {
+            & $Python @cli --json work env $payload.clank_slug
+            $code = $LASTEXITCODE
+        }
+        else {
+            Write-Output $result.Text
+        }
     }
     "env" {
         $e = @("work", "env")
