@@ -7,7 +7,6 @@ it is never treated as RUNNING.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -162,39 +161,21 @@ def observation_facts_for_clank(store: Store, clank_id: str) -> list[dict[str, A
 
 
 def derive_handoff_status(store: Store, session: dict[str, Any]) -> str:
-    """Handoff is proven from event history. Session close is not a handoff."""
+    """Handoff is proven only by HANDOFF_RECORDED. Session close is not a handoff."""
     if session.get("ended_utc") is None:
         return HANDOFF_MISSING
     session_id = str(session.get("session_id") or "")
     if not session_id:
         return HANDOFF_UNKNOWN
-    ended = store.conn.execute(
-        """
-        SELECT payload_json, ledger_seq FROM events
-        WHERE event_type = ? AND session_id = ?
-        ORDER BY ledger_seq DESC, event_id DESC
-        LIMIT 1
-        """,
-        (str(EventType.SESSION_ENDED), session_id),
-    ).fetchone()
-    if ended is None:
-        return HANDOFF_UNKNOWN
-    try:
-        payload = json.loads(ended["payload_json"] or "{}")
-    except json.JSONDecodeError:
-        payload = {}
-    reason = str(payload.get("reason") or "")
-    if not reason.startswith("mission_"):
-        return HANDOFF_UNKNOWN
-    checkpoint = store.conn.execute(
+    proof = store.conn.execute(
         """
         SELECT 1 FROM events
-        WHERE event_type = ? AND session_id = ? AND ledger_seq < ?
+        WHERE event_type = ? AND session_id = ?
         LIMIT 1
         """,
-        (str(EventType.CHECKPOINT_RECORDED), session_id, ended["ledger_seq"]),
+        (str(EventType.HANDOFF_RECORDED), session_id),
     ).fetchone()
-    if checkpoint is None:
+    if proof is None:
         return HANDOFF_UNKNOWN
     return HANDOFF_RECORDED
 

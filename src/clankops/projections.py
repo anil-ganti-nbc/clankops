@@ -177,6 +177,31 @@ def _apply_mission_state_reconciled(conn: sqlite3.Connection, event: Event) -> N
     )
 
 
+def _apply_handoff_recorded(conn: sqlite3.Connection, event: Event) -> None:
+    p = event.payload
+    conn.execute(
+        """
+        INSERT INTO handoffs (
+            handoff_id, session_id, mission_id, clank_id, to_state,
+            checkpoint_id, actor, source, observed_at, ledger_seq, created_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            p["handoff_id"],
+            event.session_id or p.get("session_id"),
+            event.mission_id or p.get("mission_id"),
+            event.clank_id or p.get("clank_id"),
+            p["to_state"],
+            p.get("checkpoint_id"),
+            event.actor,
+            event.source,
+            p.get("observed_at") or event.ts_utc,
+            event.ledger_seq,
+            event.ts_utc,
+        ),
+    )
+
+
 def _apply_session_started(conn: sqlite3.Connection, event: Event) -> None:
     payload = event.payload or {}
     provenance = event.provenance or {}
@@ -508,6 +533,7 @@ HANDLERS: dict[str, Handler] = {
     EventType.MISSION_CREATED: _apply_mission_created,
     EventType.MISSION_STATE_CHANGED: _apply_mission_state_changed,
     EventType.MISSION_STATE_RECONCILED: _apply_mission_state_reconciled,
+    EventType.HANDOFF_RECORDED: _apply_handoff_recorded,
     EventType.SESSION_STARTED: _apply_session_started,
     EventType.SESSION_ENDED: _apply_session_ended,
     EventType.CHECKPOINT_RECORDED: _apply_checkpoint,

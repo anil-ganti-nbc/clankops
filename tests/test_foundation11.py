@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import timedelta
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from clankops.brief import format_history
 from clankops.cli import main
 from clankops.clock import FrozenClock, isoformat_utc
 from clankops.enums import EventSource, EventType, MissionState
-from clankops.errors import InvalidTransitionError, NotFoundError, ValidationError
+from clankops.errors import ClankOpsError, InvalidTransitionError, NotFoundError, ValidationError
 from clankops.events import list_events
 from clankops.launch import launch_agent
 from clankops.process import (
@@ -320,6 +321,14 @@ def test_canonical_handoff_is_distinguishable(tmp_path: Path) -> None:
     view = session_process_view(store, closed, now=T0)
     assert view["session"] == SESSION_CLOSED
     assert view["handoff"] == HANDOFF_RECORDED
+    handoffs = _of(store, EventType.HANDOFF_RECORDED)
+    assert len(handoffs) == 1
+    assert handoffs[0].session_id == session_id
+    assert handoffs[0].payload.get("to_state") == MissionState.PAUSED
+    before = dump_projection_state(store.conn)
+    rebuild_projections(store.conn)
+    assert dump_projection_state(store.conn) == before
+    assert derive_handoff_status(store, store.resolve_session(session_id)) == HANDOFF_RECORDED
     store.conn.close()
 
 
@@ -526,4 +535,211 @@ def test_cli_reconcile_requires_explicit_mission_reason_evidence(
     store = open_store(db, actor="user")
     assert store.resolve_mission(mission["display_id"])["state"] == MissionState.COMPLETED
     assert _event_count(store, EventType.MISSION_STATE_RECONCILED) == 1
+    store.conn.close()
+
+
+def test_checkpoint_then_direct_pause_is_not_handoff(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "cp-pause.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(store)
+    session_id = mission["session_id"]
+    store.record_checkpoint(mission["display_id"], current_work="pausing directly")
+    store.pause_mission(mission["display_id"])
+    closed = store.resolve_session(session_id)
+    assert derive_handoff_status(store, closed) == HANDOFF_UNKNOWN
+    assert _event_count(store, EventType.HANDOFF_RECORDED) == 0
+    store.conn.close()
+
+
+def test_checkpoint_then_direct_block_is_not_handoff(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "cp-block.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(store)
+    session_id = mission["session_id"]
+    store.record_checkpoint(mission["display_id"], current_work="blocking directly")
+    store.block_mission(mission["display_id"])
+    closed = store.resolve_session(session_id)
+    assert derive_handoff_status(store, closed) == HANDOFF_UNKNOWN
+    assert _event_count(store, EventType.HANDOFF_RECORDED) == 0
+    store.conn.close()
+
+
+def test_ordinary_complete_with_checkpoint_is_not_handoff(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "cp-complete.db", actor="cursor", clock=FrozenClock(T0))
+    mission = _seed(store)
+    session_id = mission["session_id"]
+    store.record_checkpoint(mission["display_id"], completed="ordinary complete")
+    store.complete_mission(mission["display_id"])
+    closed = store.resolve_session(session_id)
+    assert derive_handoff_status(store, closed) == HANDOFF_UNKNOWN
+    assert _event_count(store, EventType.HANDOFF_RECORDED) == 0
+    store.conn.close()
+
+
+def test_reconciliation_rejects_evidence_plane_source_before_write(
+    tmp_path: Path, capsys
+) -> None:
+    db = str(tmp_path / "src.db")
+    store = open_store(db, actor="user", clock=FrozenClock(T0))
+    mission = _paused(store)
+    before = ledger_fingerprint(store)
+    before_types = _types(store)
+    for plane in (
+        EventSource.GITHUB,
+        EventSource.CI,
+        EventSource.DEPLOYMENT,
+        EventSource.LOCAL_GIT,
+        EventSource.AGENT_REPORT,
+    ):
+        with pytest.raises(ValidationError, match="must be USER"):
+            _reconcile(store, mission, source=plane)
+        assert ledger_fingerprint(store) == before
+        assert _types(store) == before_types
+        assert _event_count(store, EventType.MISSION_STATE_RECONCILED) == 0
+    store.conn.close()
+
+    assert (
+        main(
+            [
+                "--db",
+                db,
+                "--actor",
+                "user",
+                "--source",
+                "GITHUB",
+                "mission",
+                "reconcile",
+                mission["display_id"],
+                "--to",
+                "COMPLETED",
+                "--reason",
+                REASON,
+                "--evidence",
+                "github:pr:6",
+                "--basis",
+                "github",
+            ]
+        )
+        == 2
+    )
+    err = capsys.readouterr().err
+    assert "must be USER" in err
+    store = open_store(db, actor="user")
+    assert store.resolve_mission(mission["display_id"])["state"] == MissionState.PAUSED
+    assert _event_count(store, EventType.MISSION_STATE_RECONCILED) == 0
+    store.conn.close()
+
+
+def test_reconciliation_from_state_is_locked_observation(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "from.db", actor="user", clock=FrozenClock(T0))
+    mission = _paused(store)
+    result = _reconcile(store, mission)
+    event = _of(store, EventType.MISSION_STATE_RECONCILED)[0]
+    assert event.payload["from_state"] == MissionState.PAUSED
+    assert result["from_state"] == MissionState.PAUSED
+    assert event.source == EventSource.USER
+    assert {item["source"] for item in event.payload["evidence"]} == {"GITHUB"}
+    store.conn.close()
+
+
+def test_reconciliation_fails_if_mission_became_active(tmp_path: Path) -> None:
+    db = tmp_path / "became-active.db"
+    setup = open_store(db, actor="user", clock=FrozenClock(T0))
+    mission = _paused(setup)
+    setup.resume_mission(mission["display_id"])
+    setup.conn.close()
+    store = open_store(db, actor="user", clock=FrozenClock(T0))
+    before = _event_count(store, EventType.MISSION_STATE_RECONCILED)
+    with pytest.raises(InvalidTransitionError):
+        _reconcile(store, mission)
+    assert _event_count(store, EventType.MISSION_STATE_RECONCILED) == before
+    row = store.resolve_mission(mission["display_id"])
+    assert row["state"] == MissionState.ACTIVE
+    open_ids = [
+        item["session_id"]
+        for item in store.list_sessions(mission["display_id"])
+        if item["ended_utc"] is None
+    ]
+    assert open_ids
+    store.conn.close()
+
+
+def test_reconciliation_vs_resume_one_winner_never_completed_open(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "race.db"
+    setup = open_store(db, actor="user", clock=FrozenClock(T0))
+    mission = _paused(setup)
+    display = mission["display_id"]
+    setup.conn.close()
+    barrier = threading.Barrier(2)
+    outcomes: list[tuple[str, str]] = []
+    lock = threading.Lock()
+
+    def resume() -> None:
+        store = open_store(db, actor="cursor")
+        try:
+            barrier.wait(timeout=10)
+            store.resume_mission(display)
+            with lock:
+                outcomes.append(("resume", "ok"))
+        except ClankOpsError:
+            with lock:
+                outcomes.append(("resume", "err"))
+        finally:
+            store.conn.close()
+
+    def reconcile() -> None:
+        store = open_store(db, actor="user")
+        try:
+            barrier.wait(timeout=10)
+            _reconcile(store, display)
+            with lock:
+                outcomes.append(("reconcile", "ok"))
+        except ClankOpsError:
+            with lock:
+                outcomes.append(("reconcile", "err"))
+        finally:
+            store.conn.close()
+
+    threads = [threading.Thread(target=resume), threading.Thread(target=reconcile)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+        assert not thread.is_alive()
+    wins = [row for row in outcomes if row[1] == "ok"]
+    losses = [row for row in outcomes if row[1] == "err"]
+    assert len(wins) == 1
+    assert len(losses) == 1
+    store = open_store(db, actor="user")
+    row = store.resolve_mission(display)
+    open_ids = [
+        item["session_id"]
+        for item in store.list_sessions(display)
+        if item["ended_utc"] is None
+    ]
+    if row["state"] == MissionState.COMPLETED:
+        assert open_ids == []
+        assert _event_count(store, EventType.MISSION_STATE_RECONCILED) == 1
+        assert ("reconcile", "ok") in outcomes
+    else:
+        assert row["state"] == MissionState.ACTIVE
+        assert open_ids
+        assert _event_count(store, EventType.MISSION_STATE_RECONCILED) == 0
+        assert ("resume", "ok") in outcomes
+    store.conn.close()
+
+
+def test_unrelated_mission_writes_do_not_corrupt_reconciliation(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "attr.db", actor="user", clock=FrozenClock(T0))
+    first = _paused(store)
+    second = store.start_mission("oem-radar", "unrelated live work")
+    store.record_checkpoint(second["display_id"], current_work="other mission")
+    result = _reconcile(store, first)
+    event = _of(store, EventType.MISSION_STATE_RECONCILED)[0]
+    assert event.mission_id == first["mission_id"]
+    assert event.payload["mission_id"] == first["mission_id"]
+    assert event.payload["from_state"] == MissionState.PAUSED
+    assert result["from_state"] == MissionState.PAUSED
+    assert store.resolve_mission(second["display_id"])["state"] == MissionState.ACTIVE
+    assert store.resolve_mission(first["display_id"])["state"] == MissionState.COMPLETED
     store.conn.close()

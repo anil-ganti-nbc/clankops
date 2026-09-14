@@ -22,6 +22,15 @@ ALLOWED_FROM = frozenset(
     {MissionState.PLANNED, MissionState.PAUSED, MissionState.BLOCKED}
 )
 ALLOWED_TO = frozenset({MissionState.COMPLETED})
+RECONCILIATION_SOURCE = EventSource.USER
+EVIDENCE_PLANE_SOURCES = frozenset(
+    {
+        EventSource.GITHUB,
+        EventSource.CI,
+        EventSource.DEPLOYMENT,
+        EventSource.LOCAL_GIT,
+    }
+)
 RECONCILIATION_BASES = frozenset(
     {
         "operator-confirmed",
@@ -155,6 +164,36 @@ def _fact(row: dict[str, Any] | Any) -> dict[str, Any]:
     }
 
 
+def _require_user_source(source: str | EventSource | None) -> EventSource:
+    """Reconciliation is a ClankOps operator action. Evidence planes are not the event source."""
+    if source is None or str(source).strip() == "":
+        return RECONCILIATION_SOURCE
+    text = str(source).strip()
+    if text != EventSource.USER:
+        plane = (
+            "evidence plane"
+            if text in {str(item) for item in EVIDENCE_PLANE_SOURCES}
+            else "non-USER source"
+        )
+        raise ValidationError(
+            f"reconciliation event source must be USER; {text} is a {plane}, "
+            "not the reconciliation action. Put GitHub/CI/deployment/local git on evidence[].source."
+        )
+    return RECONCILIATION_SOURCE
+
+
+def _open_session_ids(store: Store, mission_id: str) -> list[str]:
+    rows = store.conn.execute(
+        """
+        SELECT session_id FROM sessions
+        WHERE mission_id = ? AND ended_utc IS NULL
+        ORDER BY started_utc, session_id
+        """,
+        (mission_id,),
+    ).fetchall()
+    return [row["session_id"] for row in rows]
+
+
 def latest_reconciliation(store: Store, mission_id: str) -> dict[str, Any] | None:
     rows = reconciliations_for_mission(store, mission_id)
     return _fact(rows[-1]) if rows else None
@@ -174,9 +213,7 @@ def reconcile_mission(
     commit: bool = True,
 ) -> dict[str, Any]:
     """Correct projected Mission state from explicit evidence. Never rewrites events."""
-    row = store.resolve_mission(mission)
-    current = MissionState(row["state"])
-    target = MissionState(str(to_state).strip())
+    source_val = _require_user_source(source)
     why = (reason or "").strip()
     if not why:
         raise ValidationError("reconciliation requires an explicit --reason")
@@ -186,14 +223,10 @@ def reconcile_mission(
             "reconciliation --basis must be one of: "
             + ", ".join(sorted(RECONCILIATION_BASES))
         )
+    target = MissionState(str(to_state).strip())
     if target not in ALLOWED_TO:
         raise InvalidTransitionError(
             f"Foundation 11 reconciliation can only target COMPLETED, not {target}"
-        )
-    if current not in ALLOWED_FROM:
-        raise InvalidTransitionError(
-            f"cannot reconcile mission {row['display_id']} from {current} to {target}; "
-            "ordinary transitions remain for ACTIVE work, and terminal history is not rewritten"
         )
     items = parse_evidence(evidence)
     occurred = None
@@ -205,40 +238,64 @@ def reconcile_mission(
     actor_name = (actor or store.default_actor or "").strip()
     if not actor_name:
         raise ValidationError("reconciliation actor is required")
-    reconciliation_id = new_id()
-    observed_at = isoformat_utc(store.clock.now())
-    payload = {
-        "reconciliation_id": reconciliation_id,
-        "mission_id": row["mission_id"],
-        "clank_id": row["clank_id"],
-        "from_state": str(current),
-        "to_state": str(target),
-        "reason": why,
-        "evidence": items,
-        "evidence_occurred_at": occurred,
-        "reconciliation_basis": basis_text,
-        "observed_at": observed_at,
-    }
-    event = store._emit(
-        EventType.MISSION_STATE_RECONCILED,
-        payload,
-        actor=actor_name,
-        source=source or EventSource.USER,
-        clank_id=row["clank_id"],
-        mission_id=row["mission_id"],
-        session_id=None,
-        provenance={
-            "recorder": RECORDER,
-            "authorised_by": actor_name,
-            "evidence_sources": sorted({item["source"] for item in items}),
+
+    token_row = store.resolve_mission(mission)
+    store._begin_immediate()
+    event = None
+    current = None
+    reconciliation_id = None
+    observed_at = None
+    try:
+        row = store.resolve_mission(token_row["mission_id"])
+        current = MissionState(row["state"])
+        if current not in ALLOWED_FROM:
+            raise InvalidTransitionError(
+                f"cannot reconcile mission {row['display_id']} from {current} to {target}; "
+                "ordinary transitions remain for ACTIVE work, and terminal history is not rewritten"
+            )
+        open_ids = _open_session_ids(store, row["mission_id"])
+        if open_ids:
+            listed = ", ".join(open_ids)
+            raise ValidationError(
+                f"cannot reconcile {row['display_id']} around a live/open Session: {listed}"
+            )
+        reconciliation_id = new_id()
+        observed_at = isoformat_utc(store.clock.now())
+        payload = {
+            "reconciliation_id": reconciliation_id,
+            "mission_id": row["mission_id"],
+            "clank_id": row["clank_id"],
+            "from_state": str(current),
+            "to_state": str(target),
+            "reason": why,
+            "evidence": items,
+            "evidence_occurred_at": occurred,
             "reconciliation_basis": basis_text,
-        },
-        bind_session=False,
-    )
-    if commit:
-        store.commit()
+            "observed_at": observed_at,
+        }
+        event = store._emit(
+            EventType.MISSION_STATE_RECONCILED,
+            payload,
+            actor=actor_name,
+            source=source_val,
+            clank_id=row["clank_id"],
+            mission_id=row["mission_id"],
+            session_id=None,
+            provenance={
+                "recorder": RECORDER,
+                "authorised_by": actor_name,
+                "evidence_sources": sorted({item["source"] for item in items}),
+                "reconciliation_basis": basis_text,
+            },
+            bind_session=False,
+        )
+        if commit:
+            store.commit()
+    except Exception:
+        store.conn.rollback()
+        raise
     return {
-        "mission": store.resolve_mission(row["mission_id"]),
+        "mission": store.resolve_mission(token_row["mission_id"]),
         "reconciliation_id": reconciliation_id,
         "event_id": event.event_id,
         "ledger_seq": event.ledger_seq,

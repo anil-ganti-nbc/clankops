@@ -399,6 +399,8 @@ def event_summary(event: Any) -> str:
         if occurred:
             bits.append(f"evidence occurred: {occurred}")
         return " | ".join(bits)
+    if event_type == EventType.HANDOFF_RECORDED:
+        return f"HANDOFF RECORDED -> {payload.get('to_state') or 'unknown'}"
     if event_type == EventType.DEPLOYMENT_OBSERVED:
         env = payload.get("environment") or "unknown"
         surface = payload.get("surface_id") or "unknown"

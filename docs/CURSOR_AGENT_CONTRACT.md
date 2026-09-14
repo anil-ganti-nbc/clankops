@@ -49,7 +49,7 @@ python -m clankops --actor cursor agent launch oem-radar --launcher cursor --no-
 
 Managed child exit is recorded as `AGENT_PROCESS_EXITED`. The Session stays open. That is not a handoff. Missing process evidence is UNKNOWN, not RUNNING. See [Foundation 10](FOUNDATION_10.md).
 
-Stale projected Mission state (for example a delivered Foundation whose Mission remained PAUSED) is corrected with `mission reconcile`, not by fabricating an ACTIVE interval. Session close is not a recorded handoff. See [Foundation 11](FOUNDATION_11.md).
+Stale projected Mission state (for example a delivered Foundation whose Mission remained PAUSED) is corrected with `mission reconcile`, not by fabricating an ACTIVE interval. Reconciliation event source is `USER`; GitHub is evidence, not the action. Session close is not a recorded handoff — only canonical `handoff` writes `HANDOFF_RECORDED`. See [Foundation 11](FOUNDATION_11.md).
 
 ## Stop / handoff
 

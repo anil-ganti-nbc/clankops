@@ -141,6 +141,7 @@ Requirements:
 - explicit `--reason`
 - at least one `--evidence`
 - explicit `--basis`
+- event `--source` must be `USER` (evidence planes are rejected before write)
 - zero silent inference
 - no "pick latest unfinished Mission"
 - no automatic GitHub fetch as part of the mutation
@@ -199,22 +200,64 @@ Derived state:
 | Session | Handoff |
 | --- | --- |
 | `OPEN` | `MISSING` |
-| `CLOSED` | `RECORDED` only if event history proves a canonical handoff |
-| `CLOSED` | otherwise `UNKNOWN` |
+| `CLOSED` + `HANDOFF_RECORDED` for that Session | `RECORDED` |
+| `CLOSED` without that event | `UNKNOWN` |
 
-Proof of handoff, in this slice:
+`HANDOFF_RECORDED` is emitted **only** by canonical `handoff_mission()`.
 
-- latest `SESSION_ENDED` for that `session_id`
-- `payload.reason` starts with `mission_` (Mission left ACTIVE work)
-- and a `CHECKPOINT_RECORDED` on that Session with `ledger_seq` before the end
+Do **not** infer handoff from:
 
-`session end` (reason `explicit`) is not a handoff. Completing a Mission
-without a checkpoint is not a proven Foundation 1 handoff.
+- `CHECKPOINT_RECORDED` plus `SESSION_ENDED reason=mission_*`
+- ordinary `mission pause` / `block` / `complete`
+- `session end`
+
+A checkpoint followed by a direct pause produces `CLOSED` / `UNKNOWN`.
+Historical Sessions without the explicit event remain `UNKNOWN`.
 
 **UNKNOWN stays UNKNOWN.** Do not infer `HANDOFF RECORDED` merely because
 `ended_utc` is non-null.
 
 Process exit is still not a handoff. Process exit is still not Session close.
+
+## Reconciliation source authority
+
+The reconciliation **action** is a ClankOps operator mutation. Its event
+`source` must be `USER`.
+
+GitHub, CI, deployment, and local git are **evidence planes**. They may
+appear on:
+
+- `evidence[].source`
+- `provenance.evidence_sources`
+- `reconciliation_basis`
+
+They must not be the event source.
+
+```text
+clankctl --source GITHUB mission reconcile ...
+```
+
+fails before writing. No `MISSION_STATE_RECONCILED` event is minted.
+
+`--actor user` without `--source` defaults to `USER` and is accepted.
+
+## Atomic reconciliation
+
+Reconciliation is one reserved write:
+
+1. `BEGIN IMMEDIATE`
+2. re-read the Mission under the lock
+3. validate current state (`PLANNED` / `PAUSED` / `BLOCKED`)
+4. refuse if any Session on that Mission is still open
+5. append `MISSION_STATE_RECONCILED` with `from_state` equal to the
+   locked observation
+6. project
+7. commit
+
+Any failure rolls back. Never reconcile around a live Session. A
+concurrent resume that wins the lock leaves the Mission `ACTIVE` with
+its Session; reconciliation then fails and emits nothing. A
+reconciliation that wins leaves `COMPLETED` with no open Session.
 
 ## Attention
 

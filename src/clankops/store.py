@@ -1669,7 +1669,40 @@ class Store:
             mission_row = self.abandon_mission(mission, actor=actor, source=source)
         else:
             raise ValidationError(f"unsupported handoff state: {target}")
-        return {"checkpoint": checkpoint, "mission": mission_row}
+        session_id = None
+        event_id = checkpoint.get("event_id")
+        if event_id:
+            bound = self.conn.execute(
+                "SELECT session_id FROM events WHERE event_id = ?",
+                (event_id,),
+            ).fetchone()
+            if bound is not None:
+                session_id = bound["session_id"]
+        handoff_id = new_id()
+        self._emit(
+            EventType.HANDOFF_RECORDED,
+            {
+                "handoff_id": handoff_id,
+                "session_id": session_id,
+                "mission_id": mission_row["mission_id"],
+                "clank_id": mission_row["clank_id"],
+                "to_state": str(mission_row["state"]),
+                "checkpoint_id": checkpoint.get("checkpoint_id"),
+            },
+            actor=actor,
+            source=source,
+            clank_id=mission_row["clank_id"],
+            mission_id=mission_row["mission_id"],
+            session_id=session_id,
+            provenance={"recorder": "clankops.store", "canonical": "handoff_mission"},
+            bind_session=False,
+        )
+        self.commit()
+        return {
+            "checkpoint": checkpoint,
+            "mission": mission_row,
+            "handoff_id": handoff_id,
+        }
 
 
 def open_store(

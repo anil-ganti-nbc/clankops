@@ -92,7 +92,10 @@ def format_history(events: list[Any]) -> str:
     lines = []
     for event in events:
         payload = event.payload or {}
-        if str(event.event_type) == EventType.MISSION_STATE_RECONCILED:
+        if str(event.event_type) in {
+            EventType.MISSION_STATE_RECONCILED,
+            EventType.HANDOFF_RECORDED,
+        }:
             summary = event_summary(event)
         else:
             summary = payload.get("objective") or payload.get("to_state") or payload.get("title")
