@@ -173,6 +173,7 @@ def observe_session(
     mission_state = row.get("mission_state")
     anomaly = bool(row.get("ended_utc") is None and mission_state and mission_state != MissionState.ACTIVE)
     stale = bool(row.get("ended_utc") is None and age is not None and age >= stale_after)
+    process = session_process_view(store, row, now=instant)
     return {
         "session_id": row["session_id"],
         "actor": row.get("actor"),
@@ -203,9 +204,9 @@ def observe_session(
         "anomaly": (
             "open Session attached to a non-ACTIVE Mission" if anomaly else None
         ),
-        "managed_process": session_process_view(store, row, now=instant),
-        "session": "OPEN" if row.get("ended_utc") is None else "CLOSED",
-        "handoff": "MISSING" if row.get("ended_utc") is None else "RECORDED",
+        "managed_process": process,
+        "session": process.get("session") or ("OPEN" if row.get("ended_utc") is None else "CLOSED"),
+        "handoff": process.get("handoff") or "UNKNOWN",
     }
 
 
@@ -379,7 +380,26 @@ def fleet_home(
 
 def event_summary(event: Any) -> str:
     payload = event.payload or {}
-    if str(getattr(event, "event_type", "")) == EventType.DEPLOYMENT_OBSERVED:
+    event_type = str(getattr(event, "event_type", ""))
+    if event_type == EventType.MISSION_STATE_RECONCILED:
+        from clankops.reconciliation import format_evidence_labels
+
+        from_state = payload.get("from_state") or "unknown"
+        to_state = payload.get("to_state") or "unknown"
+        reason = payload.get("reason") or "unknown"
+        evidence = format_evidence_labels(payload.get("evidence") or [])
+        occurred = payload.get("evidence_occurred_at")
+        bits = [
+            f"RECONCILED {from_state} -> {to_state}",
+            f"reason: {reason}",
+        ]
+        if evidence:
+            bits.append(f"evidence: {evidence}")
+        bits.append(f"reconciled: {getattr(event, 'ts_utc', None) or payload.get('observed_at') or 'unknown'}")
+        if occurred:
+            bits.append(f"evidence occurred: {occurred}")
+        return " | ".join(bits)
+    if event_type == EventType.DEPLOYMENT_OBSERVED:
         env = payload.get("environment") or "unknown"
         surface = payload.get("surface_id") or "unknown"
         host = payload.get("host_identity") or "unknown"
@@ -487,6 +507,15 @@ def dossier(
         inspect_remote=inspect_remote,
     )
     from clankops.deployment import current_deployments
+    from clankops.reconciliation import reconciliations_for_clank
+
+    recs = reconciliations_for_clank(store, detail["clank_id"])
+    rec_by_mission = {row["mission_id"]: row for row in recs}
+    missions = []
+    for mission in detail.get("missions") or []:
+        row = dict(mission)
+        row["reconciliation"] = rec_by_mission.get(mission["mission_id"])
+        missions.append(row)
 
     return {
         "identity": brief["identity"],
@@ -494,7 +523,8 @@ def dossier(
         "now": now_block,
         "reconcile": rec,
         "timeline": timeline,
-        "missions": detail.get("missions") or [],
+        "missions": missions,
+        "reconciliations": recs,
         "features": detail.get("features") or [],
         "tasks": tasks,
         "decisions": decisions,

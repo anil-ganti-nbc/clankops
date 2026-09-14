@@ -41,6 +41,9 @@ Ideas noticed during Foundation 0. None of these are implemented. Do not treat t
 - Foundation 10 records managed process exit (`AGENT_PROCESS_EXITED`)
   without closing the Session. Child exit is not a handoff. Missing
   evidence stays UNKNOWN, never RUNNING.
+- Foundation 11 reconciles stale projected Mission state from explicit
+  evidence (`MISSION_STATE_RECONCILED`). Session close is not a recorded
+  handoff. PR merge is not Mission completion unless reconciled.
 - Inject the [agent logging contract](AGENT_LOGGING_CONTRACT.md) into Cursor/Codex/Claude/GLM/Grok launchers
 - Session auto-start from agent identity
 - Refuse to start Clank work until `brief` has been read

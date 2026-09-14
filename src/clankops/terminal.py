@@ -427,10 +427,12 @@ def _session_dossier_html(session: dict[str, Any]) -> str:
         bits.append(f"<div>process: {_mark('UNKNOWN')}</div>")
     if session.get("open"):
         bits.append(
-            f"<div>handoff: {_mark('OPEN SESSION')} — explicit handoff required</div>"
+            f"<div>session: {_mark('OPEN')} — handoff: {_mark('MISSING')} — explicit handoff required</div>"
         )
     else:
-        bits.append(f"<div>handoff: {_mark('RECORDED')}</div>")
+        handoff = (session.get("handoff") or (session.get("managed_process") or {}).get("handoff") or "UNKNOWN")
+        bits.append(f"<div>session: {_mark('CLOSED')}</div>")
+        bits.append(f"<div>handoff: {_mark(str(handoff))}</div>")
     if session.get("stale"):
         bits.append(f" {_mark('stale')}")
     if session.get("anomaly"):
@@ -567,7 +569,27 @@ def _dossier_html(payload: dict[str, Any]) -> str:
     missions = _list_block(
         "MISSIONS",
         payload.get("missions") or [],
-        lambda m: f"{_mark(m.get('state') or 'unknown')} {html.escape(m.get('display_id') or '')} — {html.escape(m.get('objective') or '')}",
+        lambda m: (
+            f"{_mark(m.get('state') or 'unknown')} {html.escape(m.get('display_id') or '')} — "
+            f"{html.escape(m.get('objective') or '')}"
+            + (f" {_mark('RECONCILED')}" if m.get("reconciliation") else "")
+        ),
+    )
+    reconciliations = _list_block(
+        "MISSION RECONCILIATIONS",
+        payload.get("reconciliations") or [],
+        lambda r: (
+            f"{_mark('RECONCILED')} {html.escape(r.get('mission_display') or r.get('mission_id') or '')} "
+            f"{html.escape(str(r.get('from_state') or ''))} -> {html.escape(str(r.get('to_state') or ''))} "
+            f"reason {html.escape(r.get('reason') or 'unknown')} "
+            f"basis {html.escape(r.get('reconciliation_basis') or 'unknown')} "
+            f"reconciled {html.escape(r.get('observed_at') or 'unknown')}"
+            + (
+                f" evidence occurred {html.escape(r.get('evidence_occurred_at'))}"
+                if r.get("evidence_occurred_at")
+                else ""
+            )
+        ),
     )
     features = _list_block(
         "FEATURES",
@@ -620,7 +642,7 @@ def _dossier_html(payload: dict[str, Any]) -> str:
     heading = f"<h1>{html.escape(ident.get('display_name') or ident.get('slug') or '')}</h1>"
     return _page(
         f"{ident.get('slug')} · ClankOps Terminal",
-        heading + now_section + reconcile_section + timeline + missions + features + tasks + decisions + artifacts + deployments + brief_pre,
+        heading + now_section + reconcile_section + timeline + missions + reconciliations + features + tasks + decisions + artifacts + deployments + brief_pre,
     )
 
 

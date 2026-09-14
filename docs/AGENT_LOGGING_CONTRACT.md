@@ -18,7 +18,7 @@ Foundation 0/0.1 is the ledger. Foundation 1 makes Cursor adoption operational v
 
    If two agents are working the same Mission, each must pass `--session` or its own `CLANKOPS_SESSION_ID`. A supplied Session that belongs to another Mission, Clank, or actor, is closed, or does not exist, is rejected.
 
-   Stop with `clankctl handoff <mission> --state PAUSED|BLOCKED|COMPLETED|ABANDONED` (checkpoint + git capture + Mission state). `session end` remains available for a single actor.
+   Stop with `clankctl handoff <mission> --state PAUSED|BLOCKED|COMPLETED|ABANDONED` (checkpoint + git capture + Mission state). `session end` remains available for a single actor. Ending a Session is not itself a recorded handoff.
 4. **Record meaningful checkpoints**, not spam. Include completed / current / next / outstanding / tests / branch / HEAD / working-tree. `handoff` captures git from the canonical local path.
 5. **Record new features** when a capability actually appears: `clankctl feature add <clank> "<feature>"`.
 6. **Record concrete tasks**: `clankctl task add` / `task done`.
@@ -27,6 +27,7 @@ Foundation 0/0.1 is the ledger. Foundation 1 makes Cursor adoption operational v
 9. **Attach evidence** as artefacts. Mark the source honestly: local git vs GitHub vs agent report.
 10. **Before stopping**, set Mission state explicitly via `handoff`. Do not leave an ACTIVE mission by vanishing. A managed process exiting is evidence that the child returned; it is not a handoff and does not close the Session.
 11. **Final checkpoint must contain the exact next action** if one is known. If unknown, omit it. Do not fabricate.
+12. **Do not fabricate an ACTIVE interval** to complete a Mission that was never resumed. Use `mission reconcile` when projected state is stale vs demonstrable evidence. See [Foundation 11](FOUNDATION_11.md).
 
 ## Provenance rules for agents
 

@@ -97,9 +97,13 @@ session: OPEN
 handoff: MISSING
 ```
 
+See [Foundation 11](FOUNDATION_11.md) for Session closed vs handoff recorded.
+
 Missing evidence is `UNKNOWN`, never `RUNNING`. Start-failure is
-`START_FAILED`, not exit. Canonical `handoff` / `session end` closes the
-Session (`handoff: RECORDED`) and does not delete historical observations.
+`START_FAILED`, not exit. Canonical Foundation 1 `handoff` (checkpoint,
+then leaving ACTIVE work) can prove `handoff: RECORDED`. A plain Session
+end is `handoff: UNKNOWN`. Process exit never closes the Session and does
+not delete historical observations.
 
 Surfaces: `clankctl resume-packet`, `clankctl attention`, `clankctl sessions open`,
 Session read model, Terminal dossier. There is no process-control plane
@@ -134,7 +138,8 @@ SESSION 01…
 actor: cursor
 launcher: cursor
 process: EXITED (code 0, 14m ago)
-handoff: OPEN SESSION — explicit handoff required
+session: OPEN
+handoff: MISSING — explicit handoff required
 ```
 
 ## Rebuild
@@ -144,7 +149,7 @@ handoff: OPEN SESSION — explicit handoff required
 
 ## Out of scope
 
-- Foundation 11
+- Foundation 12
 - Auto-complete / auto-close on child exit
 - A second handoff system
 - Treating actor/launcher as a permission

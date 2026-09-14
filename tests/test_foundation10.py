@@ -571,7 +571,8 @@ def test_terminal_dossier_exposes_process_without_colour_only(tmp_path: Path) ->
     assert "[SESSION]" in html
     assert "[EXITED]" in html
     assert "code 0" in html
-    assert "[OPEN SESSION]" in html
+    assert "[OPEN]" in html
+    assert "[MISSING]" in html
     assert "explicit handoff required" in html
     assert result["session_id"] in html
     store.conn.close()

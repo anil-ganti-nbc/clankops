@@ -86,14 +86,20 @@ def format_brief(brief: dict[str, Any]) -> str:
 
 
 def format_history(events: list[Any]) -> str:
+    from clankops.enums import EventType
+    from clankops.readmodel import event_summary
+
     lines = []
     for event in events:
-        payload = event.payload
-        summary = payload.get("objective") or payload.get("to_state") or payload.get("title")
-        if summary is None:
-            summary = payload.get("statement") or payload.get("name") or payload.get("slug")
-        if summary is None:
-            summary = json.dumps(payload, sort_keys=True)[:120]
+        payload = event.payload or {}
+        if str(event.event_type) == EventType.MISSION_STATE_RECONCILED:
+            summary = event_summary(event)
+        else:
+            summary = payload.get("objective") or payload.get("to_state") or payload.get("title")
+            if summary is None:
+                summary = payload.get("statement") or payload.get("name") or payload.get("slug")
+            if summary is None:
+                summary = json.dumps(payload, sort_keys=True)[:120]
         lines.append(
             f"#{event.ledger_seq}  {event.ts_utc}  {event.event_type:24}  "
             f"src={event.source:14}  actor={event.actor}  "

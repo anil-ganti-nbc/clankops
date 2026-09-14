@@ -17,6 +17,7 @@ from clankops.errors import NotFoundError
 from clankops.process import observation_facts_for_clank
 from clankops.readmodel import DEFAULT_STALE, open_sessions
 from clankops.reconcile import _checkpoint_event, github_repo_for_clank, reconcile_clank
+from clankops.reconciliation import reconciliations_for_clank
 from clankops.store import Store
 from clankops.timefmt import short_head
 
@@ -434,6 +435,7 @@ def resume_packet(
         "observation": _observation(rec),
         "deployments": _deployment_rows(store, clank_id, instant),
         "managed_process_observations": observation_facts_for_clank(store, clank_id),
+        "mission_reconciliations": reconciliations_for_clank(store, clank_id),
     }
     packet["context_fingerprint"] = context_fingerprint(packet)
     return packet
@@ -530,8 +532,19 @@ def format_resume_text(packet: dict[str, Any]) -> str:
                 f"{row.get('session_id')} "
                 f"mission={row.get('mission_display') or 'unknown'} "
                 f"{process_bit} "
+                f"session={process.get('session') or 'OPEN'} "
                 f"handoff={handoff} "
                 f"age={row.get('age') or 'unknown'}"
+            )
+    reconciliations = packet.get("mission_reconciliations") or []
+    if reconciliations:
+        lines.append("Reconciliations:")
+        for row in reconciliations:
+            display = row.get("mission_display") or row.get("mission_id") or "unknown"
+            lines.append(
+                f"  {display} {row.get('from_state')} -> {row.get('to_state')} "
+                f"basis={row.get('reconciliation_basis') or 'unknown'} "
+                f"reason={row.get('reason') or 'unknown'}"
             )
     lines.append(f"Context: {packet.get('context_fingerprint')}")
     return "\n".join(lines) + "\n"
