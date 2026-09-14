@@ -86,7 +86,9 @@ Ahead/behind is **against the currently available local tracking ref**.
 Remote freshness is unknown. The payload states that explicitly as
 `upstream_ahead_local` / `upstream_behind_local`.
 
-There is no scheduler, daemon, SSH, or GitHub polling in Harvest 1.
+There is no scheduler, daemon, SSH, or GitHub polling **inside** Harvest 1.
+The command remains one-shot. [Fleet Pulse 1](FLEET_PULSE_1.md) may invoke
+it on a Windows cadence; Pulse is a caller, not Harvest 2 semantics.
 
 ## Dirty-path privacy
 
@@ -245,13 +247,13 @@ reasons are deferred.
 
 ## Deferred to later Harvest tranches
 
-- scheduler / cron / background daemon
 - GitHub polling and remote freshness
 - `git fetch` / pull
 - automatic branch cleanup, stash, commit, checkout repair
 - automatic Mission/Session/handoff/reconciliation changes
 - deployment inspection, CI capture
 - remote host / NAS harvesting
-- Terminal Beta
+- `LOCAL_GIT_NEVER_HARVESTED` / `LOCAL_GIT_EVIDENCE_STALE` attention
+  reasons
 - semantic/vector search, dependency graph, historical reconstruction
 - Standards / Motherclank / Quartermaster authority

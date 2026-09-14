@@ -30,6 +30,15 @@ from clankops.harvest import (
     harvest_exit_code,
     harvest_local_git,
 )
+from clankops.pulse import (
+    build_task_spec,
+    format_plan_text,
+    format_spec_text,
+    format_status_text,
+    load_existing_json,
+    plan_install,
+    plan_remove,
+)
 from clankops.store import Store, open_readonly_store, open_store
 
 DEFAULT_DB = Path(os.environ.get("CLANKOPS_DB") or (Path.home() / ".clankops" / "clankops.db"))
@@ -105,6 +114,54 @@ def cmd_harvest_local_git(args: argparse.Namespace) -> int:
         store.conn.close()
     _print(format_harvest_text(payload), as_json=args.json, payload=payload)
     return harvest_exit_code(payload)
+
+
+def _pulse_spec_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    return build_task_spec(
+        interval_minutes=getattr(args, "interval", 10),
+        python_exe=getattr(args, "python", None),
+        db_path=args.db,
+        sys_path_entry=getattr(args, "sys_path", None),
+    )
+
+
+def _read_existing_facts(args: argparse.Namespace) -> dict[str, Any] | None:
+    raw = getattr(args, "existing_json", None)
+    if not raw:
+        return None
+    if raw == "-":
+        return load_existing_json(sys.stdin.read())
+    path = Path(raw)
+    if path.is_file():
+        return load_existing_json(path.read_text(encoding="utf-8"))
+    return load_existing_json(raw)
+
+
+def cmd_pulse_spec(args: argparse.Namespace) -> int:
+    spec = _pulse_spec_from_args(args)
+    _print(format_spec_text(spec), as_json=args.json, payload=spec)
+    return 0
+
+
+def cmd_pulse_plan(args: argparse.Namespace) -> int:
+    spec = _pulse_spec_from_args(args)
+    plan = plan_install(_read_existing_facts(args), spec)
+    _print(format_plan_text(plan), as_json=args.json, payload=plan)
+    return 0
+
+
+def cmd_pulse_remove_plan(args: argparse.Namespace) -> int:
+    plan = plan_remove(_read_existing_facts(args))
+    _print(format_plan_text(plan), as_json=args.json, payload=plan)
+    return 0
+
+
+def cmd_pulse_status(args: argparse.Namespace) -> int:
+    facts = _read_existing_facts(args) or {"installed": False}
+    if "installed" not in facts:
+        facts = {"installed": True, **facts}
+    _print(format_status_text(facts), as_json=args.json, payload=facts)
+    return 0
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -1529,7 +1586,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     harvest = sub.add_parser(
         "harvest",
-        help="independently observe registered local Clank checkouts (no fetch, no scheduler)",
+        help="independently observe registered local Clank checkouts (no fetch, no GitHub)",
     )
     hsub = harvest.add_subparsers(dest="harvest_action", required=True)
     p = hsub.add_parser(
@@ -1548,6 +1605,47 @@ def build_parser() -> argparse.ArgumentParser:
         help="inspect and report; write zero events and zero projections",
     )
     p.set_defaults(func=cmd_harvest_local_git)
+
+    pulse = sub.add_parser(
+        "pulse",
+        help="Fleet Pulse spec/plan only; does not register a Windows task",
+    )
+    psub = pulse.add_subparsers(dest="pulse_action", required=True)
+
+    def _pulse_flags(parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "--interval",
+            default=10,
+            help="cadence in minutes (1-1440, default 10)",
+        )
+        parser.add_argument(
+            "--python",
+            default=None,
+            help="python executable to persist (default: this interpreter)",
+        )
+        parser.add_argument(
+            "--sys-path",
+            default=None,
+            help="sys.path entry that contains the clankops package",
+        )
+        parser.add_argument(
+            "--existing-json",
+            default=None,
+            help="existing scheduler facts as JSON, file path, or '-' for stdin",
+        )
+
+    p = psub.add_parser("spec", help="print the Windows harvest-task spec (no scheduler mutation)")
+    _pulse_flags(p)
+    p.set_defaults(func=cmd_pulse_spec)
+    p = psub.add_parser("plan", help="idempotent install plan from existing scheduler facts")
+    _pulse_flags(p)
+    p.set_defaults(func=cmd_pulse_plan)
+    p = psub.add_parser("remove-plan", help="remove plan for the canonical harvest task")
+    _pulse_flags(p)
+    p.set_defaults(func=cmd_pulse_remove_plan)
+    p = psub.add_parser("status", help="format scheduler facts; does not query Task Scheduler")
+    _pulse_flags(p)
+    p.set_defaults(func=cmd_pulse_status)
 
     p = sub.add_parser("terminal", help="read-only localhost Clank Terminal (beta)")
     p.add_argument("--host", default="127.0.0.1")
