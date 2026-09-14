@@ -25,6 +25,11 @@ from clankops.context import (
 from clankops.enums import EventSource, FeatureState, MissionState
 from clankops.errors import ClankOpsError, NotFoundError, ValidationError
 from clankops.gitinspect import inspect_git
+from clankops.harvest import (
+    format_harvest_text,
+    harvest_exit_code,
+    harvest_local_git,
+)
 from clankops.store import Store, open_readonly_store, open_store
 
 DEFAULT_DB = Path(os.environ.get("CLANKOPS_DB") or (Path.home() / ".clankops" / "clankops.db"))
@@ -85,6 +90,21 @@ def _git_evidence(store: Store, mission_token: str) -> dict[str, Any] | None:
     if not any(fields.values()):
         return None
     return {"source": EventSource.LOCAL_GIT, **fields}
+
+
+def cmd_harvest_local_git(args: argparse.Namespace) -> int:
+    store = _store(args)
+    try:
+        payload = harvest_local_git(
+            store,
+            getattr(args, "clank", None),
+            dry_run=bool(getattr(args, "dry_run", False)),
+            actor=args.actor,
+        )
+    finally:
+        store.conn.close()
+    _print(format_harvest_text(payload), as_json=args.json, payload=payload)
+    return harvest_exit_code(payload)
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -1507,6 +1527,28 @@ def build_parser() -> argparse.ArgumentParser:
     p = dsub.add_parser("current", help="latest observation per surface_id")
     p.add_argument("clank")
     p.set_defaults(func=cmd_deployment_current)
+
+    harvest = sub.add_parser(
+        "harvest",
+        help="independently observe registered local Clank checkouts (no fetch, no scheduler)",
+    )
+    hsub = harvest.add_subparsers(dest="harvest_action", required=True)
+    p = hsub.add_parser(
+        "local-git",
+        help="one-shot local Git harvest of canonical registered checkouts",
+    )
+    p.add_argument(
+        "clank",
+        nargs="?",
+        default=None,
+        help="optional Clank slug or id; default is every registered Clank",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="inspect and report; write zero events and zero projections",
+    )
+    p.set_defaults(func=cmd_harvest_local_git)
 
     p = sub.add_parser("terminal", help="read-only localhost Clank Terminal (alpha)")
     p.add_argument("--host", default="127.0.0.1")

@@ -1,6 +1,9 @@
 # Future scope
 
-Ideas noticed during Foundation 0. None of these are implemented. Do not treat this list as a backlog commitment.
+Ideas noticed during Foundation 0. Do not treat this list as a backlog
+commitment. Fleet Harvest 1 implemented one-shot local Git harvest and
+worktree inventory; scheduling and remote GitHub freshness remain out of
+scope.
 
 ## Terminal / UI
 
@@ -11,10 +14,16 @@ Ideas noticed during Foundation 0. None of these are implemented. Do not treat t
 
 ## Git / GitHub ingestion
 
-- Periodic local `git` harvest per registered path (still read-only)
+- Periodic local `git` harvest per registered path (still read-only) —
+  **Harvest 1** implements one-shot `clankctl harvest local-git` with
+  semantic-state dedup, harvest-run freshness, worktree inventory, and
+  dry-run. **Scheduling is not implemented.** Remote GitHub freshness is
+  not part of Harvest 1 (no fetch, no GitHub polling).
 - GitHub compare against agent-reported SHAs so `AGENT_REPORT` is never silently promoted
 - PR/issue attachment from `gh`
-- Worktree inventory
+- Worktree inventory — **partially implemented** by Harvest 1 as local
+  Git evidence attached to the existing Clank; worktrees are not new
+  identities and are not independently harvested
 - Stale-branch ageing with evidence
 
 ## Deployment tracking

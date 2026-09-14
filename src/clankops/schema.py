@@ -388,9 +388,79 @@ CREATE INDEX idx_handoffs_session_seq
     ON handoffs(session_id, ledger_seq);
 """,
     ),
+    (
+        9,
+        "fleet_harvest_1_local_git",
+        """
+CREATE TABLE local_git_observations (
+    observation_id TEXT PRIMARY KEY,
+    clank_id TEXT NOT NULL,
+    checkout_key TEXT NOT NULL,
+    checkout_path TEXT NOT NULL,
+    state_fingerprint TEXT NOT NULL,
+    state_json TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    ledger_seq INTEGER NOT NULL,
+    observed_at TEXT NOT NULL,
+    source TEXT NOT NULL
+);
+
+CREATE INDEX idx_local_git_observations_clank_key_seq
+    ON local_git_observations(clank_id, checkout_key, ledger_seq);
+
+CREATE TABLE local_git_harvest_runs (
+    run_id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL,
+    target_slug TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT NOT NULL,
+    target_count INTEGER NOT NULL,
+    observed_changed INTEGER NOT NULL,
+    observed_unchanged INTEGER NOT NULL,
+    unavailable INTEGER NOT NULL,
+    skipped INTEGER NOT NULL,
+    errors INTEGER NOT NULL,
+    event_id TEXT NOT NULL,
+    ledger_seq INTEGER NOT NULL,
+    actor TEXT,
+    source TEXT NOT NULL
+);
+
+CREATE INDEX idx_local_git_harvest_runs_seq
+    ON local_git_harvest_runs(ledger_seq);
+
+CREATE TABLE local_git_harvest_results (
+    result_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    clank_id TEXT NOT NULL,
+    clank_slug TEXT,
+    checkout_key TEXT,
+    checkout_path TEXT,
+    result_code TEXT NOT NULL,
+    observation_event_id TEXT,
+    observation_ledger_seq INTEGER,
+    state_fingerprint TEXT,
+    error_class TEXT,
+    detail TEXT,
+    branch TEXT,
+    detached INTEGER,
+    head TEXT,
+    dirty INTEGER,
+    dirty_count INTEGER,
+    event_id TEXT NOT NULL,
+    ledger_seq INTEGER NOT NULL
+);
+
+CREATE INDEX idx_local_git_harvest_results_clank_seq
+    ON local_git_harvest_results(clank_id, ledger_seq);
+""",
+    ),
 ]
 
 PROJECTION_TABLES = (
+    "local_git_harvest_results",
+    "local_git_harvest_runs",
+    "local_git_observations",
     "handoffs",
     "mission_reconciliations",
     "agent_process_observations",
