@@ -65,16 +65,22 @@ def argument_is_secret_shaped(value: str) -> bool:
     return False
 
 
+def executable_basename(argv0: str | None) -> str | None:
+    """Basename of argv[0]. Accepts Windows or POSIX separators."""
+    text = str(argv0 or "").strip()
+    if not text:
+        return None
+    name = Path(text.replace("\\", "/")).name.strip()
+    return sanitize_text(name) if name else None
+
+
 def command_identity(argv: Sequence[str] | None) -> dict[str, Any]:
     """Safe command identity: executable basename, count, redaction flag.
 
     Never returns argv, a shell string, or inherited environment.
     """
     parts = [str(part) for part in (argv or [])]
-    executable = None
-    if parts:
-        name = Path(parts[0]).name.strip()
-        executable = sanitize_text(name) if name else None
+    executable = executable_basename(parts[0]) if parts else None
     return {
         "executable": executable,
         "argv_count": len(parts),

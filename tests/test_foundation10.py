@@ -119,6 +119,9 @@ def test_command_identity_never_returns_argv_or_shell() -> None:
         [r"C:\Python\python.exe", "--api-key=" + SECRET_TOKEN, WEBHOOK, "x" * 250]
     )
     assert identity["executable"] == "python.exe"
+    posix = command_identity(["/usr/bin/python3", "pass"])
+    assert posix["executable"] == "python3"
+    assert posix["argv_redacted"] is False
     assert identity["argv_count"] == 4
     assert identity["argv_redacted"] is True
     assert "argv" not in identity
