@@ -6,6 +6,7 @@ It does not rewrite checkpoints or git claims.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Callable
 
 from clankops.capture import resolve_unfinished_capture_mission
@@ -16,6 +17,57 @@ from clankops.reconcile import heads_match, reconcile_clank
 from clankops.store import Store
 
 CI_ARTIFACT_KIND = "github_ci"
+
+
+def _artifact_metadata(row: dict[str, Any] | Any) -> dict[str, Any]:
+    raw = row["metadata_json"] if not isinstance(row, dict) else row.get("metadata_json")
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def ci_view_from_artifact(row: dict[str, Any] | Any) -> dict[str, Any]:
+    """Mission-bound CI evidence. State comes from metadata, never the title."""
+    data = dict(row)
+    meta = _artifact_metadata(data)
+    sha = meta.get("sha")
+    state = meta.get("state")
+    return {
+        "artifact_id": data.get("artifact_id"),
+        "mission_id": data.get("mission_id"),
+        "sha": sha,
+        "state": state,
+        "ref": data.get("ref"),
+        "created_utc": data.get("created_utc"),
+        "source": data.get("source") or meta.get("source"),
+        "title": data.get("title"),
+    }
+
+
+def latest_mission_ci(store: Store, mission_id: str | None) -> dict[str, Any] | None:
+    """Latest github_ci artefact for one Mission. Never falls back to another Mission."""
+    if not mission_id:
+        return None
+    row = store.conn.execute(
+        """
+        SELECT * FROM artifacts
+        WHERE mission_id = ? AND kind = ?
+        ORDER BY created_utc DESC, artifact_id DESC
+        LIMIT 1
+        """,
+        (mission_id, CI_ARTIFACT_KIND),
+    ).fetchone()
+    if not row:
+        return None
+    return ci_view_from_artifact(row)
+
+
 _FAILED = {"failure", "cancelled", "timed_out", "action_required", "error"}
 _TITLE_FAILING_LIMIT = 5
 _TITLE_FAILING_CHARS = 80

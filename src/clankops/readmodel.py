@@ -5,14 +5,17 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from clankops.enums import CensusClassification, EventType, MissionState
-from clankops.events import list_events
+from clankops.enums import CensusClassification, EventSource, EventType, MissionState
+from clankops.errors import ValidationError
+from clankops.events import list_events, list_recent_events
 from clankops.process import session_process_view
 from clankops.reconcile import reconcile_clank
 from clankops.store import Store
 from clankops.timefmt import format_age, parse_utc, short_head
 
 DEFAULT_STALE = timedelta(hours=24)
+TIMELINE_DEFAULT = 200
+TIMELINE_MAX = 1000
 CLANKOPS_SLUG = "clankops"
 MISSION_SORT = {
     MissionState.ACTIVE: 0,
@@ -234,6 +237,20 @@ def stale_sessions(
     return rows
 
 
+def list_sessions(
+    store: Store,
+    *,
+    now: datetime | None = None,
+    stale_after: timedelta = DEFAULT_STALE,
+    open_only: bool = False,
+) -> list[dict[str, Any]]:
+    """Open and/or closed Sessions with process/handoff views. Read-only."""
+    return [
+        observe_session(store, row, now=now, stale_after=stale_after)
+        for row in _session_rows(store, open_only=open_only)
+    ]
+
+
 def session_anomalies(
     store: Store, *, now: datetime | None = None, stale_after: timedelta = DEFAULT_STALE
 ) -> list[dict[str, Any]]:
@@ -257,6 +274,7 @@ def fleet_home(
     inspect_remote=None,
     threshold_label: str | None = None,
     threshold_source: str | None = None,
+    live_local: bool | None = None,
 ) -> dict[str, Any]:
     instant = _now(store, now)
     open_rows = open_sessions(store, now=instant, stale_after=stale_after)
@@ -301,6 +319,7 @@ def fleet_home(
                 "lifecycle": clank["lifecycle"],
                 "local_path": store.canonical_local_path(clank["clank_id"]),
                 "mission_display": mission["display_id"] if mission else None,
+                "mission_id": mission["mission_id"] if mission else None,
                 "mission_state": state,
                 "mission_objective": mission["objective"] if mission else None,
                 "actor": sessions[0]["actor"] if sessions else None,
@@ -352,6 +371,7 @@ def fleet_home(
         include_github=include_github,
         inspect_local=inspect_local,
         inspect_remote=inspect_remote,
+        live_local=live_local,
     )
     summary = {
         "registered_clanks": len(table),
@@ -360,6 +380,7 @@ def fleet_home(
         "blocked_missions": state_counts["BLOCKED"],
         "open_sessions": len(open_rows),
         "stale_sessions": len(stale_rows),
+        "planned_missions": state_counts["PLANNED"],
         "stale_after": "24h" if stale_after == DEFAULT_STALE else str(stale_after),
         "verified_candidates": coverage["verified_candidates"] if coverage else None,
         "verified_registered": coverage["verified_registered"] if coverage else None,
@@ -453,6 +474,127 @@ def provenance_labels(event: Any) -> list[str]:
     return labels
 
 
+def _clamp_timeline_limit(limit: int | None) -> int:
+    if limit is None:
+        return TIMELINE_DEFAULT
+    return max(1, min(int(limit), TIMELINE_MAX))
+
+
+def resolve_timeline_filters(
+    store: Store,
+    clank_id: str,
+    *,
+    source: str | None = None,
+    event_type: str | None = None,
+    mission: str | None = None,
+) -> dict[str, str | None]:
+    """Validate timeline filters. Values are applied as bound SQL parameters."""
+    source_value = None
+    if source not in (None, ""):
+        try:
+            source_value = EventSource(source).value
+        except ValueError as exc:
+            raise ValidationError(f"unknown timeline source: {source}") from exc
+    event_value = None
+    if event_type not in (None, ""):
+        try:
+            event_value = EventType(event_type).value
+        except ValueError as exc:
+            raise ValidationError(f"unknown timeline event_type: {event_type}") from exc
+    mission_id = None
+    if mission not in (None, ""):
+        row = store.resolve_mission(mission)
+        if row["clank_id"] != clank_id:
+            raise ValidationError(
+                f"mission {row['display_id']} does not belong to this Clank"
+            )
+        mission_id = row["mission_id"]
+    return {"source": source_value, "event_type": event_value, "mission_id": mission_id}
+
+
+def _timeline_item(event: Any, mission_display: str | None) -> dict[str, Any]:
+    return {
+        "ledger_seq": event.ledger_seq,
+        "ts_utc": event.ts_utc,
+        "event_type": event.event_type,
+        "actor": event.actor,
+        "source": event.source,
+        "provenance": provenance_labels(event),
+        "session_id": event.session_id,
+        "mission_id": event.mission_id,
+        "mission_display": mission_display,
+        "summary": event_summary(event),
+    }
+
+
+def _mission_display_map(store: Store, events: list[Any]) -> dict[str, str]:
+    ids = {getattr(event, "mission_id", None) for event in events}
+    ids.discard(None)
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    mapping: dict[str, str] = {}
+    for row in store.conn.execute(
+        f"SELECT mission_id, display_id FROM missions WHERE mission_id IN ({placeholders})",
+        tuple(ids),
+    ):
+        mapping[row["mission_id"]] = row["display_id"]
+    return mapping
+
+
+def clank_timeline(
+    store: Store,
+    clank_id: str,
+    *,
+    limit: int = TIMELINE_DEFAULT,
+    source: str | None = None,
+    event_type: str | None = None,
+    mission: str | None = None,
+) -> dict[str, Any]:
+    """Newest N matching events, selected at SQL. Returned in ledger_seq order."""
+    filters = resolve_timeline_filters(
+        store,
+        clank_id,
+        source=source,
+        event_type=event_type,
+        mission=mission,
+    )
+    bounded = _clamp_timeline_limit(limit)
+    clauses = ["clank_id = ?"]
+    params: list[Any] = [clank_id]
+    if filters["mission_id"]:
+        clauses.append("mission_id = ?")
+        params.append(filters["mission_id"])
+    if filters["source"]:
+        clauses.append("source = ?")
+        params.append(filters["source"])
+    if filters["event_type"]:
+        clauses.append("event_type = ?")
+        params.append(filters["event_type"])
+    matched = int(
+        store.conn.execute(
+            "SELECT COUNT(*) AS n FROM events WHERE " + " AND ".join(clauses),
+            params,
+        ).fetchone()["n"]
+    )
+    events = list_recent_events(
+        store.conn,
+        clank_id=clank_id,
+        mission_id=filters["mission_id"],
+        source=filters["source"],
+        event_type=filters["event_type"],
+        limit=bounded,
+    )
+    displays = _mission_display_map(store, events)
+    rows = [_timeline_item(event, displays.get(event.mission_id)) for event in events]
+    return {
+        "events": rows,
+        "limit": bounded,
+        "matched": matched,
+        "filters": filters,
+    }
+
+
 def dossier(
     store: Store,
     clank: str,
@@ -462,6 +604,10 @@ def dossier(
     include_github: bool = True,
     inspect_local=None,
     inspect_remote=None,
+    timeline_limit: int | None = None,
+    timeline_source: str | None = None,
+    timeline_event_type: str | None = None,
+    timeline_mission: str | None = None,
 ) -> dict[str, Any]:
     detail = store.clank_detail(clank)
     brief = store.brief(clank)
@@ -488,21 +634,31 @@ def dossier(
         )
     ]
     timeline = []
-    for event in list_events(store.conn, clank_id=detail["clank_id"]):
-        timeline.append(
-            {
-                "ledger_seq": event.ledger_seq,
-                "ts_utc": event.ts_utc,
-                "event_type": event.event_type,
-                "actor": event.actor,
-                "source": event.source,
-                "provenance": provenance_labels(event),
-                "session_id": event.session_id,
-                "summary": event_summary(event),
-            }
+    timeline_matched = None
+    bounded = any(
+        value not in (None, "")
+        for value in (timeline_limit, timeline_source, timeline_event_type, timeline_mission)
+    )
+    if bounded:
+        result = clank_timeline(
+            store,
+            detail["clank_id"],
+            limit=TIMELINE_DEFAULT if timeline_limit is None else timeline_limit,
+            source=timeline_source,
+            event_type=timeline_event_type,
+            mission=timeline_mission,
         )
+        timeline = result["events"]
+        timeline_matched = result["matched"]
+    else:
+        events = list_events(store.conn, clank_id=detail["clank_id"])
+        displays = _mission_display_map(store, events)
+        for event in events:
+            timeline.append(_timeline_item(event, displays.get(event.mission_id)))
+        timeline_matched = len(timeline)
     now_block = {
         "mission_display": mission["display_id"] if mission else None,
+        "mission_id": mission["mission_id"] if mission else None,
         "mission_state": mission["state"] if mission else None,
         "mission_objective": mission["objective"] if mission else None,
         "open_sessions": open_rows,
@@ -540,6 +696,7 @@ def dossier(
         "now": now_block,
         "reconcile": rec,
         "timeline": timeline,
+        "timeline_matched": timeline_matched,
         "missions": missions,
         "reconciliations": recs,
         "features": detail.get("features") or [],
