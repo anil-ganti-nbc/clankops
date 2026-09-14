@@ -29,6 +29,7 @@ REASON_DEPLOYMENT_DIFFERS_FROM_MISSION = "DEPLOYMENT_DIFFERS_FROM_MISSION"
 REASON_MANAGED_PROCESS_EXITED_WITH_OPEN_SESSION = (
     "MANAGED_PROCESS_EXITED_WITH_OPEN_SESSION"
 )
+LIVE_LOCAL_REASON_CODES = (REASON_GIT_DRIFT, REASON_DIRTY_WITHOUT_OPEN_SESSION)
 
 CLASS_INTEGRITY = "integrity"
 CLASS_INFORMATIONAL = "informational"
@@ -556,8 +557,13 @@ def attention_report(
     inspect_local=None,
     inspect_remote=None,
     reconcile: dict[str, Any] | None = None,
+    live_local: bool | None = None,
 ) -> dict[str, Any]:
-    """Derived attention items. Never mutates the ledger."""
+    """Derived attention items. Never mutates the ledger.
+
+    ``live_local=False`` means snapshot mode: GIT_DRIFT and
+    DIRTY_WITHOUT_OPEN_SESSION are not evaluated. Coverage is PARTIAL.
+    """
     instant = now or store.clock.now()
     open_rows = open_sessions(store, now=instant, stale_after=stale_after)
     targets = [store.resolve_clank(clank)] if clank else store.list_clanks()
@@ -596,10 +602,11 @@ def attention_report(
             if ci_item:
                 items.append(ci_item)
         items.extend(_deployment_differs_items(store, clank_row, instant))
-        items.extend(_git_drift_items(clank_row, rec_mission, rec, instant))
-        dirty = _dirty_without_session_item(clank_row, rec_mission, rec, open_for, instant)
-        if dirty:
-            items.append(dirty)
+        if live_local is not False:
+            items.extend(_git_drift_items(clank_row, rec_mission, rec, instant))
+            dirty = _dirty_without_session_item(clank_row, rec_mission, rec, open_for, instant)
+            if dirty:
+                items.append(dirty)
         for session in open_for:
             exited = _managed_process_exited_item(clank_row, session, instant)
             if exited:
@@ -615,6 +622,12 @@ def attention_report(
                     )
                 )
     items.sort(key=_sort_key)
+    if live_local is False:
+        coverage = "PARTIAL"
+        live_local_checks = "UNOBSERVABLE IN SNAPSHOT"
+    else:
+        coverage = "EVALUATED"
+        live_local_checks = "EVALUATED"
     return {
         "items": items,
         "freshness": freshness,
@@ -622,6 +635,10 @@ def attention_report(
         "threshold_source": threshold_source,
         "derived": True,
         "authoritative": False,
+        "coverage": coverage,
+        "live_local_checks": live_local_checks,
+        "live_local_reason_codes": list(LIVE_LOCAL_REASON_CODES),
+        "live_local": False if live_local is False else True if live_local else None,
     }
 
 

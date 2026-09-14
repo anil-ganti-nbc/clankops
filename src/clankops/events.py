@@ -184,6 +184,42 @@ def list_events(
     return [event_from_row(row) for row in conn.execute(sql, params)]
 
 
+def list_recent_events(
+    conn: sqlite3.Connection,
+    *,
+    clank_id: str,
+    mission_id: str | None = None,
+    source: str | None = None,
+    event_type: str | None = None,
+    limit: int,
+) -> list[Event]:
+    """Newest ``limit`` matching events, returned in ledger_seq order.
+
+    Filters are applied before the limit. This is a bounded read: it does
+    not load the full Clank history then slice in Python.
+    """
+    clauses = ["clank_id = ?"]
+    params: list[Any] = [clank_id]
+    if mission_id:
+        clauses.append("mission_id = ?")
+        params.append(mission_id)
+    if source:
+        clauses.append("source = ?")
+        params.append(source)
+    if event_type:
+        clauses.append("event_type = ?")
+        params.append(event_type)
+    sql = (
+        f"SELECT {EVENT_COLUMNS} FROM events WHERE "
+        + " AND ".join(clauses)
+        + " ORDER BY ledger_seq DESC LIMIT ?"
+    )
+    params.append(limit)
+    newest = [event_from_row(row) for row in conn.execute(sql, params)]
+    newest.reverse()
+    return newest
+
+
 def copy_events(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
     """Copy ONLY the immutable event log into dst, preserving ledger_seq."""
     rows = src.execute(f"SELECT {EVENT_COLUMNS} FROM events {LEDGER_ORDER_SQL}").fetchall()

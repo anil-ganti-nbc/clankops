@@ -12,15 +12,16 @@ from pathlib import Path
 
 import pytest
 
-from clankops.ci import CI_ARTIFACT_KIND
+from clankops.attention import REASON_DIRTY_WITHOUT_OPEN_SESSION
+from clankops.ci import CI_ARTIFACT_KIND, latest_mission_ci
 from clankops.cli import main
-from clankops.clock import FrozenClock
+from clankops.clock import FrozenClock, TickingClock
 from clankops.deployment import capture_deployment
 from clankops.enums import EventSource, EventType
 from clankops.errors import ValidationError
-from clankops.events import list_events
+from clankops.events import list_events, list_recent_events
 from clankops.harvest import harvest_local_git
-from clankops.readmodel import ledger_fingerprint
+from clankops.readmodel import clank_timeline, ledger_fingerprint
 from clankops.store import open_readonly_store, open_store
 from clankops.terminal import assert_bind_allowed, dispatch, serve
 from clankops.terminal_query import QueryError, apply_filters, parse_filter
@@ -28,7 +29,7 @@ from clankops.terminal_views import HELP_BINDINGS, _js, fleet_html
 
 from test_fleet_harvest1 import SECRET_FILE, SECRET_PASSWORD, SECRET_QUERY, SECRET_TOKEN, _init_repo, _git
 from test_foundation2 import T0, _census, _http, running_terminal
-from test_foundation3 import HEAD, _local
+from test_foundation3 import CANON, HEAD, _local
 from test_foundation6 import HETZNER_SURFACE, NAS_SURFACE, _hetzner, _nas
 from test_foundation10 import _launch, _paused
 
@@ -171,7 +172,7 @@ def test_required_html_and_json_routes(tmp_path: Path, monkeypatch: pytest.Monke
         if path != "/health":
             assert "CLANKOPS TERMINAL BETA" in text
             assert "[SNAPSHOT]" in text
-            assert "id=\"command-bar\"" in text or path in {"/sessions", "/health"} or "command-bar" in text or path.startswith("/clank/")
+            assert "id=\"command-bar\"" in text or path in {"/sessions", "/health", "/attention"} or "command-bar" in text or path.startswith("/clank/")
         else:
             payload = json.loads(text)
             assert payload["ok"] is True
@@ -401,8 +402,9 @@ def test_harvest_failure_keeps_last_known_good(tmp_path: Path) -> None:
     store.register_clank("watch-clank")
     status, _, body = dispatch(store, "GET", "/clank/watch-clank", now=T0)
     page = body.decode("utf-8")
-    assert "[LOCAL_GIT]" in page  # evidence plane label
     assert "never harvested" in page
+    assert 'data-plane="harvested">UNKNOWN' in page
+    assert 'data-plane="live">UNKNOWN / NOT REQUESTED' in page
     store.conn.close()
 
 
@@ -520,3 +522,293 @@ def test_keyboard_markup_and_no_colour_only_states() -> None:
     for key, desc in HELP_BINDINGS:
         assert key in html
         assert desc in html
+
+
+def _attach_ci(store, mission: str, sha: str, *, state: str, title: str) -> dict:
+    return store.attach_artifact(
+        mission=mission,
+        kind=CI_ARTIFACT_KIND,
+        ref=sha,
+        title=title,
+        source=EventSource.CI,
+        artifact_source=EventSource.CI,
+        metadata={"sha": sha, "state": state},
+    )
+
+
+def test_current_mission_ci_does_not_fall_back_to_another_mission(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "ci-fallback.db", actor="cursor", clock=TickingClock(T0))
+    store.register_clank("oem-radar")
+    older = store.start_mission("oem-radar", "mission A")
+    _attach_ci(store, older["display_id"], "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", state="success", title="green")
+    store.record_checkpoint(older["display_id"], current_work="paused A", next_action="stop A")
+    store.pause_mission(older["display_id"])
+    current = store.start_mission("oem-radar", "mission B")
+    status, _, body = dispatch(store, "GET", "/api/clank/oem-radar", now=T0)
+    payload = json.loads(body.decode("utf-8"))
+    assert payload["now"]["mission_id"] == current["mission_id"]
+    assert payload["ci"] is None
+    by_id = {row["mission_id"]: row for row in payload["missions"]}
+    assert by_id[older["mission_id"]]["ci"]["sha"] == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    assert by_id[older["mission_id"]]["ci"]["state"] == "success"
+    assert by_id[older["mission_id"]]["ci"]["state"] != by_id[older["mission_id"]]["ci"]["title"]
+    assert by_id[current["mission_id"]]["ci"] is None
+    html_status, _, html_body = dispatch(store, "GET", "/clank/oem-radar", now=T0)
+    html = html_body.decode("utf-8")
+    assert 'data-plane="ci">UNKNOWN' in html
+    assert html_status == 200
+    store.conn.close()
+
+
+def test_current_mission_shows_its_own_latest_ci_never_older_mission(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "ci-b.db", actor="cursor", clock=TickingClock(T0))
+    store.register_clank("oem-radar")
+    older = store.start_mission("oem-radar", "mission A")
+    _attach_ci(store, older["display_id"], "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", state="success", title="A CI")
+    store.pause_mission(older["display_id"])
+    current = store.start_mission("oem-radar", "mission B")
+    _attach_ci(store, current["display_id"], "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", state="failure", title="looks like success")
+    status, _, body = dispatch(store, "GET", "/api/clank/oem-radar", now=T0)
+    payload = json.loads(body.decode("utf-8"))
+    assert payload["ci"]["sha"] == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    assert payload["ci"]["state"] == "failure"
+    assert payload["ci"]["title"] == "looks like success"
+    by_id = {row["mission_id"]: row for row in payload["missions"]}
+    assert by_id[older["mission_id"]]["ci"]["sha"].startswith("aaa")
+    assert by_id[current["mission_id"]]["ci"]["sha"].startswith("bbb")
+    store.conn.close()
+
+
+def test_same_mission_latest_ci_is_created_utc_then_artifact_id(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "ci-latest.db", actor="cursor", clock=TickingClock(T0))
+    store.register_clank("oem-radar")
+    mission = store.start_mission("oem-radar", "handheld")
+    first = _attach_ci(store, mission["display_id"], "1111111111111111111111111111111111111111", state="pending", title="CI1")
+    second = _attach_ci(store, mission["display_id"], "2222222222222222222222222222222222222222", state="success", title="CI2")
+    view = latest_mission_ci(store, mission["mission_id"])
+    assert view["artifact_id"] == second["artifact_id"]
+    assert view["sha"] == "2222222222222222222222222222222222222222"
+    assert view["state"] == "success"
+    assert view["state"] != first["title"]
+    status, _, body = dispatch(store, "GET", "/api/clank/oem-radar", now=T0)
+    payload = json.loads(body.decode("utf-8"))
+    assert payload["ci"]["artifact_id"] == second["artifact_id"]
+    assert payload["ci"]["state"] == "success"
+    store.conn.close()
+
+
+def test_ci_state_never_taken_from_title(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "ci-title.db", actor="cursor", clock=FrozenClock(T0))
+    store.register_clank("oem-radar")
+    mission = store.start_mission("oem-radar", "handheld")
+    store.attach_artifact(
+        mission=mission["display_id"],
+        kind=CI_ARTIFACT_KIND,
+        ref="cccccccccccccccccccccccccccccccccccccccc",
+        title="success",
+        source=EventSource.CI,
+        metadata={"sha": "cccccccccccccccccccccccccccccccccccccccc"},
+    )
+    view = latest_mission_ci(store, mission["mission_id"])
+    assert view["title"] == "success"
+    assert view["state"] is None
+    status, _, body = dispatch(store, "GET", "/api/clank/oem-radar", now=T0)
+    payload = json.loads(body.decode("utf-8"))
+    assert payload["ci"]["state"] is None
+    store.conn.close()
+
+
+def test_bounded_timeline_read_and_filters(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "tl.db", actor="cursor", clock=FrozenClock(T0))
+    store.register_clank("oem-radar")
+    first = store.start_mission("oem-radar", "mission one")
+    store.record_checkpoint(first["display_id"], source=EventSource.LOCAL_GIT, next_action="continue")
+    for i in range(250):
+        store.add_decision(first["display_id"], f"decision {i}")
+    store.pause_mission(first["display_id"])
+    second = store.start_mission("oem-radar", "mission two")
+    store.add_decision(second["display_id"], "second mission only")
+    clank_id = store.resolve_clank("oem-radar")["clank_id"]
+    recent = list_recent_events(store.conn, clank_id=clank_id, limit=200)
+    assert len(recent) == 200
+    seqs = [event.ledger_seq for event in recent]
+    assert seqs == sorted(seqs)
+    all_events = list_events(store.conn, clank_id=clank_id)
+    assert len(all_events) > 200
+    assert seqs == [event.ledger_seq for event in all_events[-200:]]
+    bounded = clank_timeline(store, clank_id, limit=50)
+    assert bounded["limit"] == 50
+    assert len(bounded["events"]) == 50
+    assert bounded["matched"] == len(all_events)
+    by_source = clank_timeline(store, clank_id, source=EventSource.LOCAL_GIT, limit=20)
+    assert by_source["events"]
+    assert all(row["source"] == EventSource.LOCAL_GIT for row in by_source["events"])
+    by_type = clank_timeline(store, clank_id, event_type=EventType.DECISION_RECORDED, limit=20)
+    assert len(by_type["events"]) == 20
+    assert all(row["event_type"] == EventType.DECISION_RECORDED for row in by_type["events"])
+    by_mission = clank_timeline(store, clank_id, mission=second["display_id"], limit=20)
+    assert by_mission["events"]
+    assert all(row["mission_id"] == second["mission_id"] for row in by_mission["events"])
+    combined = clank_timeline(
+        store,
+        clank_id,
+        source=EventSource.USER,
+        event_type=EventType.DECISION_RECORDED,
+        mission=second["display_id"],
+        limit=10,
+    )
+    assert combined["matched"] == 1
+    assert combined["events"][0]["summary"].startswith("second mission only") or "second mission only" in combined["events"][0]["summary"]
+    status, _, body = dispatch(store, "GET", "/api/clank/oem-radar?limit=40", now=T0)
+    payload = json.loads(body.decode("utf-8"))
+    assert len(payload["timeline"]) == 40
+    assert payload["timeline_limit"] == 40
+    html_status, _, html_body = dispatch(store, "GET", "/clank/oem-radar?limit=40", now=T0)
+    html = html_body.decode("utf-8")
+    displayed = [row["ledger_seq"] for row in reversed(payload["timeline"])]
+    assert str(displayed[0]) in html
+    assert payload["timeline"][0]["ledger_seq"] < payload["timeline"][-1]["ledger_seq"]
+    with pytest.raises(ValidationError, match="unknown timeline source"):
+        clank_timeline(store, clank_id, source="NOPE")
+    with pytest.raises(ValidationError, match="unknown timeline event_type"):
+        clank_timeline(store, clank_id, event_type="NOT_AN_EVENT")
+    store.register_clank("watch-clank")
+    other = store.start_mission("watch-clank", "elsewhere")
+    with pytest.raises(ValidationError, match="does not belong"):
+        clank_timeline(store, clank_id, mission=other["display_id"])
+    bad_source, _, src_body = dispatch(store, "GET", "/api/clank/oem-radar?source=NOPE", now=T0)
+    assert bad_source == 400
+    assert b"unknown timeline source" in src_body
+    missing, _, miss_body = dispatch(store, "GET", "/api/clank/oem-radar?mission=COPS-999999", now=T0)
+    assert missing == 404
+    store.conn.close()
+
+
+def test_legacy_reconcile_api_is_live_local_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    local_calls: list[str] = []
+    github_calls: list[str] = []
+    monkeypatch.setattr(
+        "clankops.reconcile.inspect_git",
+        lambda path: local_calls.append(path) or _local("main", HEAD, dirty=False),
+    )
+    monkeypatch.setattr(
+        "clankops.reconcile.inspect_github",
+        lambda repo: github_calls.append(repo) or {
+            "source": "GITHUB",
+            "ok": True,
+            "error": None,
+            "repo": repo,
+            "default_branch": "main",
+            "default_branch_head": HEAD,
+            "open_prs": [],
+            "checks": {
+                "source": "GITHUB",
+                "ok": True,
+                "error": None,
+                "sha": HEAD,
+                "state": "success",
+                "runs": [],
+                "contexts": [],
+            },
+        },
+    )
+    store = open_store(tmp_path / "api.db", actor="cursor", clock=FrozenClock(T0))
+    repo = _init_repo(tmp_path / "oem")
+    store.register_clank("oem-radar", local_path=str(repo), remotes=[CANON])
+    store.start_mission("oem-radar", "handheld")
+    dispatch(store, "GET", "/", now=T0)
+    dispatch(store, "GET", "/fleet", now=T0)
+    dispatch(store, "GET", "/attention", now=T0)
+    dispatch(store, "GET", "/sessions", now=T0)
+    dispatch(store, "GET", "/clank/oem-radar", now=T0)
+    assert local_calls == []
+    assert github_calls == []
+    status, _, body = dispatch(store, "GET", "/api/reconcile", now=T0)
+    assert status == 200
+    assert local_calls
+    assert github_calls == []
+    fleet = json.loads(body.decode("utf-8"))
+    assert fleet["include_github"] is False
+    local_calls.clear()
+    dispatch(store, "GET", "/api/reconcile?github=1", now=T0)
+    assert github_calls
+    github_calls.clear()
+    local_calls.clear()
+    status, _, body = dispatch(store, "GET", "/api/clank/oem-radar/reconcile", now=T0)
+    assert status == 200
+    assert local_calls
+    assert github_calls
+    github_calls.clear()
+    dispatch(store, "GET", "/api/clank/oem-radar/reconcile?github=0", now=T0)
+    assert github_calls == []
+    local_calls.clear()
+    dispatch(store, "GET", "/api/clank/oem-radar/reconcile?live=0", now=T0)
+    assert local_calls
+    store.conn.close()
+
+
+def test_snapshot_attention_coverage_is_partial_until_live(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "clankops.reconcile.inspect_git",
+        lambda path: _local("main", HEAD, dirty=True),
+    )
+    store = open_store(tmp_path / "att.db", actor="cursor", clock=FrozenClock(T0))
+    repo = _init_repo(tmp_path / "oem")
+    store.register_clank("oem-radar", local_path=str(repo), remotes=[CANON])
+    mission = store.start_mission("oem-radar", "handheld")
+    store.record_checkpoint(
+        mission["display_id"],
+        next_action="keep going",
+        branch="main",
+        head=HEAD,
+        working_tree="clean",
+    )
+    store.pause_mission(mission["display_id"])
+    status, _, body = dispatch(store, "GET", "/attention", now=T0)
+    html = body.decode("utf-8")
+    assert status == 200
+    assert "coverage: PARTIAL" in html
+    assert "UNOBSERVABLE IN SNAPSHOT" in html
+    assert "use ?live=1 to evaluate Foundation 7 live-local reasons" in html
+    assert REASON_DIRTY_WITHOUT_OPEN_SESSION not in html
+    assert "none derived" not in html
+    assert 'id="command-bar"' not in html
+    api_status, _, api_body = dispatch(store, "GET", "/api/attention", now=T0)
+    report = json.loads(api_body.decode("utf-8"))
+    assert api_status == 200
+    assert report["coverage"] == "PARTIAL"
+    assert report["live_local_checks"] == "UNOBSERVABLE IN SNAPSHOT"
+    assert REASON_DIRTY_WITHOUT_OPEN_SESSION not in [item["reason_code"] for item in report["items"]]
+    live_status, _, live_body = dispatch(store, "GET", "/attention?live=1", now=T0)
+    live_html = live_body.decode("utf-8")
+    assert live_status == 200
+    assert REASON_DIRTY_WITHOUT_OPEN_SESSION in live_html
+    assert "coverage: EVALUATED" in live_html
+    live_api = json.loads(dispatch(store, "GET", "/api/attention?live=1", now=T0)[2].decode("utf-8"))
+    assert live_api["coverage"] == "EVALUATED"
+    assert any(item["reason_code"] == REASON_DIRTY_WITHOUT_OPEN_SESSION for item in live_api["items"])
+    q_status, _, q_body = dispatch(store, "GET", "/attention?q=state:active", now=T0)
+    assert q_status == 200
+    assert "coverage: PARTIAL" in q_body.decode("utf-8")
+    store.conn.close()
+
+
+def test_empty_evidence_planes_do_not_stamp_source_badges(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "planes.db", actor="cursor", clock=FrozenClock(T0))
+    store.register_clank("watch-clank")
+    store.start_mission("watch-clank", "keep collecting")
+    status, _, body = dispatch(store, "GET", "/clank/watch-clank", now=T0)
+    html = body.decode("utf-8")
+    assert status == 200
+    assert 'data-plane="harvested">UNKNOWN' in html
+    assert "[LOCAL_GIT]" not in html.split('data-plane="harvested">')[1].split("</td>")[0]
+    assert 'data-plane="live">UNKNOWN / NOT REQUESTED' in html
+    assert 'data-plane="github">UNKNOWN / NOT REQUESTED' in html
+    assert 'data-plane="ci">UNKNOWN' in html
+    live_html = dispatch(store, "GET", "/clank/watch-clank?live=1", now=T0)[2].decode("utf-8")
+    assert "UNKNOWN / NOT REQUESTED" in live_html
+    assert 'data-plane="github">UNKNOWN / NOT REQUESTED' in live_html
+    gh_html = dispatch(store, "GET", "/clank/watch-clank?github=1", now=T0)[2].decode("utf-8")
+    assert 'data-plane="live">UNKNOWN / NOT REQUESTED' in gh_html
+    store.conn.close()
+

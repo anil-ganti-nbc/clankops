@@ -293,6 +293,7 @@ def fleet_html(home: dict[str, Any], *, query: str = "", error: str | None = Non
         ("open Sessions", summary.get("open_sessions")),
         ("stale Sessions", summary.get("stale_sessions")),
         ("attention", summary.get("attention_count")),
+        ("coverage", (home.get("attention") or {}).get("coverage")),
         ("integrity", summary.get("attention_integrity")),
         ("harvested", summary.get("harvest_observed")),
         ("never/no-path", summary.get("harvest_never")),
@@ -369,14 +370,22 @@ def fleet_html(home: dict[str, Any], *, query: str = "", error: str | None = Non
         "?github=1 for GitHub network. Refresh harvest with <code>clankctl harvest local-git</code> — "
         "the browser will not run it.</p>"
     )
-    att_items = (home.get("attention") or {}).get("items") or []
+    att_report = home.get("attention") or {}
+    att_items = att_report.get("items") or []
     att_summary = (
         f'<p class="muted">attention {html.escape(str(summary.get("attention_count") or 0))} · '
         f'integrity {html.escape(str(summary.get("attention_integrity") or 0))} · '
+        f'coverage {html.escape(_unknown(att_report.get("coverage")))} · '
+        f'live-local checks {html.escape(_unknown(att_report.get("live_local_checks")))} · '
         f'<a href="/attention">open queue</a>'
         + (
             f' · top {html.escape(str((att_items[0] or {}).get("reason_code") or ""))}'
             if att_items
+            else ""
+        )
+        + (
+            " · use ?live=1 to evaluate Foundation 7 live-local reasons"
+            if att_report.get("coverage") == "PARTIAL"
             else ""
         )
         + "</p>"
@@ -393,6 +402,20 @@ def fleet_html(home: dict[str, Any], *, query: str = "", error: str | None = Non
     )
 
 
+def _attention_coverage(attention: dict[str, Any]) -> str:
+    items = attention.get("items") or []
+    coverage = attention.get("coverage") or "UNKNOWN"
+    checks = attention.get("live_local_checks") or "UNKNOWN"
+    bits = [
+        f"attention items: {len(items)}",
+        f"coverage: {html.escape(str(coverage))}",
+        f"live-local-dependent checks: {html.escape(str(checks))}",
+    ]
+    if coverage == "PARTIAL":
+        bits.append("use ?live=1 to evaluate Foundation 7 live-local reasons")
+    return f'<p class="muted" id="attention-coverage">{" · ".join(bits)}</p>'
+
+
 def _attention_list(attention: dict[str, Any], *, heading: str = "ATTENTION") -> str:
     items = attention.get("items") or []
     threshold = html.escape(_unknown(attention.get("threshold")))
@@ -404,8 +427,15 @@ def _attention_list(attention: dict[str, Any], *, heading: str = "ATTENTION") ->
         f"{mark(attention.get('class_integrity_mark') or '■')} integrity "
         f"{mark(attention.get('class_info_mark') or '◇')} informational "
         f"{mark(attention.get('class_age_mark') or '○')} age</p>"
+        + _attention_coverage(attention)
     )
     if not items:
+        if attention.get("coverage") == "PARTIAL":
+            return (
+                header
+                + '<p class="muted">snapshot did not evaluate the full reason set; '
+                "zero items here is not an unqualified none</p>"
+            )
         return header + '<p class="muted">none derived</p>'
     blocks = []
     for item in items:
@@ -447,10 +477,14 @@ def attention_html(payload: dict[str, Any], *, query: str = "", error: str | Non
         "active_missions": payload.get("active_missions"),
         "blocked_missions": payload.get("blocked_missions"),
     }
+    note = (
+        '<p class="muted">Filters: <code>clank</code>, <code>class</code>, '
+        "<code>reason</code> / <code>reason_code</code> query parameters. "
+        "The fleet command bar is not used here.</p>"
+    )
     return page(
         "Attention · ClankOps Terminal Beta",
-        command_bar(query, action="/attention", error=error)
-        + _attention_list(payload, heading="ATTENTION QUEUE"),
+        note + _attention_list(payload, heading="ATTENTION QUEUE"),
         status=status,
     )
 
@@ -631,6 +665,23 @@ def _reconcile_section(payload: dict[str, Any]) -> str:
 """
 
 
+def _plane_cell(
+    value: Any,
+    *,
+    plane: str,
+    badge_name: str,
+    requested: bool = True,
+    observed: bool = False,
+) -> str:
+    if not requested:
+        inner = "UNKNOWN / NOT REQUESTED"
+    elif not observed:
+        inner = "UNKNOWN"
+    else:
+        inner = f"{badge(badge_name)} {html.escape(_unknown(value))}"
+    return f'<td data-plane="{html.escape(plane)}">{inner}</td>'
+
+
 def _evidence_matrix(payload: dict[str, Any]) -> str:
     now = payload.get("now") or {}
     harvest = payload.get("local_git_harvest") or {}
@@ -644,8 +695,17 @@ def _evidence_matrix(payload: dict[str, Any]) -> str:
         f"{d.get('surface_id')}={(d.get('sha_short') or (d.get('deployed_sha') or '')[:7] or 'unknown')}"
         for d in deploys
     ) or "UNKNOWN"
-    live_on = bool((payload.get("mode") or {}).get("live_local"))
-    gh_on = bool((payload.get("mode") or {}).get("github"))
+    mode = payload.get("mode")
+    if mode is not None:
+        live_on = bool(mode.get("live_local"))
+        gh_on = bool(mode.get("github"))
+    else:
+        live_on = True
+        gh_on = rec.get("observed_github") is not None
+    harvested_observed = bool(harvest.get("source")) and not harvest.get("never_harvested")
+    ci_observed = bool(ci)
+    deploy_observed = bool(deploys)
+    rec_observed = bool(now.get("branch") or now.get("head") or now.get("working_tree"))
     rows = [
         (
             "branch",
@@ -712,17 +772,50 @@ def _evidence_matrix(payload: dict[str, Any]) -> str:
         body.append(
             "<tr>"
             f"<td>{html.escape(field)}</td>"
-            f"<td>{badge('REC')} {html.escape(_unknown(recorded))}</td>"
-            f"<td>{badge('LOCAL_GIT')} {html.escape(_unknown(harvested))}</td>"
-            f"<td>{badge('LIVE LOCAL')} {html.escape(_unknown(live))}</td>"
-            f"<td>{badge('GITHUB')} {html.escape(_unknown(gh))}</td>"
-            f"<td>{badge('CI')} {html.escape(_unknown(ci_v))}</td>"
-            f"<td>{badge('DEPLOY')} {html.escape(_unknown(dep))}</td>"
-            "</tr>"
+            + _plane_cell(
+                recorded,
+                plane="recorded",
+                badge_name="REC",
+                observed=rec_observed and recorded is not None,
+            )
+            + _plane_cell(
+                harvested,
+                plane="harvested",
+                badge_name="LOCAL_GIT",
+                observed=harvested_observed and harvested is not None,
+            )
+            + _plane_cell(
+                live,
+                plane="live",
+                badge_name="LIVE LOCAL",
+                requested=live_on,
+                observed=live_on and live is not None,
+            )
+            + _plane_cell(
+                gh,
+                plane="github",
+                badge_name="GITHUB",
+                requested=gh_on,
+                observed=gh_on and gh is not None,
+            )
+            + _plane_cell(
+                ci_v,
+                plane="ci",
+                badge_name="CI",
+                observed=ci_observed and ci_v is not None,
+            )
+            + _plane_cell(
+                dep,
+                plane="deploy",
+                badge_name="DEPLOY",
+                observed=deploy_observed and dep is not None,
+            )
+            + "</tr>"
         )
     return (
         "<h2>EVIDENCE MATRIX</h2>"
-        '<p class="muted">No best-truth column. UNKNOWN stays UNKNOWN. Planes are not ranked.</p>'
+        '<p class="muted">No best-truth column. UNKNOWN stays UNKNOWN. Planes are not ranked. '
+        "Empty cells are unobserved; source badges appear only after evidence exists.</p>"
         '<table class="matrix"><thead><tr><th>field</th><th>RECORDED</th><th>HARVESTED LOCAL</th>'
         "<th>LIVE LOCAL</th><th>GITHUB</th><th>CI</th><th>DEPLOYMENT</th></tr></thead><tbody>"
         + "".join(body)
@@ -776,6 +869,23 @@ def dossier_html(payload: dict[str, Any]) -> str:
             if recon
             else ""
         )
+        ci = mission.get("ci") or {}
+        ci_bit = (
+            f" CI {html.escape(str(ci.get('state') or 'UNKNOWN'))} "
+            f"{html.escape(short_head(ci.get('sha')) or 'unknown')} "
+            f"{html.escape(_unknown(ci.get('created_utc')))}"
+            if ci
+            else " CI UNKNOWN"
+        )
+        cp = mission.get("checkpoint") or {}
+        cp_bit = (
+            f"{html.escape(_unknown(cp.get('branch')))} @ "
+            f"{html.escape(short_head(cp.get('head')) or 'unknown')} "
+            f"{html.escape(_unknown(cp.get('working_tree')))} "
+            f"stopped {html.escape(_unknown(cp.get('current_work') or cp.get('next_action')))}"
+            if cp
+            else "checkpoint UNKNOWN"
+        )
         missions.append(
             "<tr>"
             f"<td>{html.escape(mission.get('display_id') or '')}</td>"
@@ -784,6 +894,8 @@ def dossier_html(payload: dict[str, Any]) -> str:
             f"<td>{html.escape(_unknown(mission.get('created_utc')))}</td>"
             f"<td>{html.escape(_unknown(mission.get('next_action')))}</td>"
             f"<td>{html.escape(str(mission.get('session_count') or ''))}{recon_bit}</td>"
+            f"<td class='wrap'>{ci_bit}</td>"
+            f"<td class='wrap'>{cp_bit}</td>"
             "</tr>"
         )
     deploys = []
@@ -851,7 +963,9 @@ def dossier_html(payload: dict[str, Any]) -> str:
         + _evidence_matrix(payload)
         + _attention_list(payload.get("attention") or {}, heading="ATTENTION")
         + "<h2>MISSIONS</h2><h2>MISSION HISTORY</h2>"
-        + '<table class="grid"><thead><tr><th>id</th><th>state</th><th>objective</th><th>created</th><th>next</th><th>sessions / recon</th></tr></thead><tbody>'
+        + '<table class="grid"><thead><tr><th>id</th><th>state</th><th>objective</th>'
+        "<th>created</th><th>next</th><th>sessions / recon</th><th>CI</th><th>checkpoint</th>"
+        "</tr></thead><tbody>"
         + "".join(missions)
         + "</tbody></table>"
         + recon_html

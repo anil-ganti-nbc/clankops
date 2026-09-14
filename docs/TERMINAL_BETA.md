@@ -86,13 +86,16 @@ JSON (additive fields; existing keys kept):
 | `/api/sessions/open` | Open Sessions |
 | `/api/sessions/stale` | Stale Sessions |
 | `/api/attention` | Derived attention |
-| `/api/reconcile` | Live reconcile (honours `?live=` / `?github=`) |
-| `/api/clank/<slug>/reconcile` | Per-Clank reconcile |
+| `/api/reconcile` | Live LOCAL_GIT by default (Foundation 3). GitHub opt-in via `?github=1`. Ignores `?live=`. |
+| `/api/clank/<slug>/reconcile` | Live LOCAL_GIT by default. GitHub on unless `?github=0`. Ignores `?live=`. |
 
-Filters on `/attention`: `clank`, `class`, `reason` / `reason_code`.
+HTML browsing (`/`, `/fleet`, `/attention`, `/sessions`, `/clank/<slug>`) stays snapshot-default and makes zero git/GitHub subprocess calls unless `?live=1` / `?github=1`. Reconcile API routes are not snapshot pages.
 
-Dossier timeline: `limit` default 200, maximum 1000. Display is newest
-first; `ledger_seq` remains canonical order.
+Filters on `/attention`: `clank`, `class`, `reason` / `reason_code` URL parameters. There is no command bar on `/attention`.
+
+Dossier timeline is a bounded SQL read: default `limit=200`, maximum 1000, newest N selected at the event query then returned in `ledger_seq` order. HTML may display newest-first; `ledger_seq` remains canonical. Filters `source=`, `event_type=`, `mission=` apply before the limit. Invalid source/event_type values return 400. Unknown mission returns 404. A mission that belongs to another Clank returns 400. `mission=` binds `mission_id` / display id, not Session.
+
+Top-level dossier CI belongs to the Mission in NOW. If that Mission has no `github_ci` artefact, CI is UNKNOWN — never another Mission's CI. Each Mission history row has that Mission's own latest CI (`created_utc DESC`, `artifact_id DESC`) and its latest recorded checkpoint. CI state comes from artefact metadata, never the human title.
 
 ## Filter grammar
 
@@ -139,9 +142,13 @@ Selected rows use an inset marker plus class `selected`, not colour alone.
 Never collapse checkpoint HEAD, harvested HEAD, live HEAD, GitHub HEAD,
 CI SHA, and deployed SHA into one “truth”.
 
-Labels:
+Labels appear only after that plane has evidence. Empty / unrequested
+planes render `UNKNOWN` or `UNKNOWN / NOT REQUESTED`, not a source badge
+in front of UNKNOWN.
 
-`[REC]` `[LOCAL_GIT]` `[LIVE LOCAL]` `[GITHUB]` `[CI]` `[DEPLOY]` `[USER]` `[SYSTEM]`
+Snapshot attention coverage is PARTIAL: `GIT_DRIFT` and
+`DIRTY_WITHOUT_OPEN_SESSION` are unobservable until `?live=1`. Zero
+snapshot items is not an unqualified “none”.
 
 UNKNOWN stays UNKNOWN. A different deployed SHA is informational, not
 failure. Dirty is not blocked. Clean is not complete. Old is not wrong.
@@ -153,6 +160,10 @@ UNKNOWN.
 
 Foundation 7 semantics. Derived. Writes zero events. No
 acknowledge/dismiss.
+
+Snapshot pages report `coverage: PARTIAL` and
+`live-local-dependent checks: UNOBSERVABLE IN SNAPSHOT`. CLI attention
+still evaluates the full reason set.
 
 Classes keep shape identity: integrity `■`, informational `◇`, age `○`.
 
