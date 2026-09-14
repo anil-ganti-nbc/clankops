@@ -918,11 +918,17 @@ def cmd_agent(args: argparse.Namespace) -> int:
         finally:
             store.conn.close()
         merged = {**(ctx.get("env") or {}), **(result.get("env") or {})}
-        payload = {**ctx, **{k: v for k, v in result.items() if k != "env"}, "env": merged}
+        public = {
+            key: value
+            for key, value in result.items()
+            if key not in {"argv", "args", "env"}
+        }
+        payload = {**ctx, **public, "env": merged}
+        proc = result.get("process") or {}
         _print(
             f"launched {result['mission']} session={result['session_id']} "
             f"actor={result['requested_actor']} launcher={result['launcher']} "
-            f"exit={result['exit_code']}\n"
+            f"exit={result['exit_code']} process={proc.get('kind') or 'UNKNOWN'}\n"
             f"Context: {result['context_fingerprint']}\n"
             + format_powershell_env(ctx),
             as_json=args.json,
@@ -1103,6 +1109,18 @@ def cmd_deployment_current(args: argparse.Namespace) -> int:
 def _format_session_row(row: dict[str, Any]) -> str:
     anomaly = f" ANOMALY={row['anomaly']}" if row.get("anomaly") else ""
     stale = " [stale]" if row.get("stale") else ""
+    process = row.get("managed_process") or {}
+    status = process.get("status") or "UNKNOWN"
+    if status == "EXITED":
+        process_bit = (
+            f" process=EXITED code={process.get('exit_code')} "
+            f"observed_at={process.get('observed_at') or 'unknown'}"
+        )
+    elif status == "START_FAILED":
+        process_bit = " process=START_FAILED"
+    else:
+        process_bit = " process=UNKNOWN"
+    handoff = process.get("handoff") or ("MISSING" if row.get("open") else "RECORDED")
     return (
         f"{row['session_id']} actor={row.get('actor') or 'unknown'} "
         f"clank={row.get('clank_slug') or 'unknown'} "
@@ -1113,6 +1131,7 @@ def _format_session_row(row: dict[str, Any]) -> str:
         f"branch={row.get('branch') or 'unknown'} "
         f"HEAD={row.get('head_short') or row.get('head') or 'unknown'} "
         f"next={row.get('next_action') or 'unknown'}"
+        f"{process_bit} handoff={handoff}"
         f"{stale}{anomaly}"
     )
 

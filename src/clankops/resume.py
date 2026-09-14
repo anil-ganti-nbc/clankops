@@ -14,6 +14,7 @@ from clankops.attention import CLASS_AGE, REASON_STALE_OPEN_SESSION, attention_r
 from clankops.ci import CI_ARTIFACT_KIND
 from clankops.deployment import current_deployments
 from clankops.errors import NotFoundError
+from clankops.process import observation_facts_for_clank
 from clankops.readmodel import DEFAULT_STALE, open_sessions
 from clankops.reconcile import _checkpoint_event, github_repo_for_clank, reconcile_clank
 from clankops.store import Store
@@ -30,6 +31,8 @@ _EPHEMERAL_KEYS = frozenset(
         "checkpoint_age",
         "ci_capture_age",
         "open_session_age",
+        "process_age",
+        "process_age_seconds",
     }
 )
 _FINGERPRINT_SKIP_KEYS = frozenset(
@@ -271,11 +274,13 @@ def _session_rows(open_for: list[dict[str, Any]]) -> list[dict[str, Any]]:
         {
             "session_id": row.get("session_id"),
             "actor": row.get("actor"),
+            "launcher": row.get("launcher"),
             "mission_id": row.get("mission_id"),
             "mission_display": row.get("mission_display"),
             "started_utc": row.get("started_utc"),
             "age": row.get("age"),
             "age_seconds": row.get("age_seconds"),
+            "managed_process": row.get("managed_process"),
         }
         for row in open_for
     ]
@@ -428,6 +433,7 @@ def resume_packet(
         "reconcile": _reconcile_view(rec),
         "observation": _observation(rec),
         "deployments": _deployment_rows(store, clank_id, instant),
+        "managed_process_observations": observation_facts_for_clank(store, clank_id),
     }
     packet["context_fingerprint"] = context_fingerprint(packet)
     return packet
@@ -507,10 +513,24 @@ def format_resume_text(packet: dict[str, Any]) -> str:
         lines.append("  none")
     else:
         for row in sessions:
+            process = row.get("managed_process") or {}
+            status = process.get("status") or "UNKNOWN"
+            if status == "EXITED":
+                process_bit = (
+                    f"process=EXITED code={process.get('exit_code')} "
+                    f"observed_at={process.get('observed_at') or 'unknown'}"
+                )
+            elif status == "START_FAILED":
+                process_bit = "process=START_FAILED (never started)"
+            else:
+                process_bit = "process=UNKNOWN"
+            handoff = process.get("handoff") or "MISSING"
             lines.append(
                 f"  {row.get('actor') or 'unknown'} "
                 f"{row.get('session_id')} "
                 f"mission={row.get('mission_display') or 'unknown'} "
+                f"{process_bit} "
+                f"handoff={handoff} "
                 f"age={row.get('age') or 'unknown'}"
             )
     lines.append(f"Context: {packet.get('context_fingerprint')}")

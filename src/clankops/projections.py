@@ -427,6 +427,41 @@ def _apply_deployment_observed(conn: sqlite3.Connection, event: Event) -> None:
     )
 
 
+def _apply_agent_process_observation(conn: sqlite3.Connection, event: Event) -> None:
+    p = event.payload
+    conn.execute(
+        """
+        INSERT INTO agent_process_observations (
+            observation_id, session_id, mission_id, clank_id, kind,
+            actor, launcher, context_fingerprint, executable, argv_count,
+            argv_redacted, exit_code, error, observed_at, observed_how,
+            observer, source, ledger_seq, created_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            p["observation_id"],
+            p.get("session_id") or event.session_id,
+            p.get("mission_id") or event.mission_id,
+            p.get("clank_id") or event.clank_id,
+            p["kind"],
+            p.get("actor") or event.actor,
+            p.get("launcher"),
+            p.get("context_fingerprint"),
+            p.get("executable"),
+            p.get("argv_count"),
+            1 if p.get("argv_redacted") else 0,
+            p.get("exit_code"),
+            p.get("error"),
+            p.get("observed_at") or event.ts_utc,
+            p.get("observed_how"),
+            p.get("observer") or event.actor,
+            p.get("source") or event.source,
+            event.ledger_seq,
+            event.ts_utc,
+        ),
+    )
+
+
 HANDLERS: dict[str, Handler] = {
     EventType.CLANK_REGISTERED: _apply_clank_registered,
     EventType.CLANK_ALIAS_ADDED: _apply_clank_alias_added,
@@ -449,6 +484,8 @@ HANDLERS: dict[str, Handler] = {
     EventType.RELATIONSHIP_RECORDED: _apply_relationship,
     EventType.CENSUS_CANDIDATE_RECORDED: _apply_census_candidate,
     EventType.DEPLOYMENT_OBSERVED: _apply_deployment_observed,
+    EventType.AGENT_PROCESS_EXITED: _apply_agent_process_observation,
+    EventType.AGENT_PROCESS_START_FAILED: _apply_agent_process_observation,
 }
 
 

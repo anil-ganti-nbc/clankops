@@ -311,9 +311,40 @@ ALTER TABLE sessions ADD COLUMN context_fingerprint TEXT;
 ALTER TABLE sessions ADD COLUMN source TEXT;
 """,
     ),
+    (
+        6,
+        "foundation10_agent_process_observations",
+        """
+CREATE TABLE agent_process_observations (
+    observation_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    mission_id TEXT,
+    clank_id TEXT,
+    kind TEXT NOT NULL,
+    actor TEXT,
+    launcher TEXT,
+    context_fingerprint TEXT,
+    executable TEXT,
+    argv_count INTEGER,
+    argv_redacted INTEGER NOT NULL DEFAULT 0,
+    exit_code INTEGER,
+    error TEXT,
+    observed_at TEXT NOT NULL,
+    observed_how TEXT,
+    observer TEXT,
+    source TEXT,
+    ledger_seq INTEGER NOT NULL,
+    created_utc TEXT NOT NULL
+);
+
+CREATE INDEX idx_agent_process_session_seq
+    ON agent_process_observations(session_id, ledger_seq);
+""",
+    ),
 ]
 
 PROJECTION_TABLES = (
+    "agent_process_observations",
     "deployment_observations",
     "census_candidates",
     "checkpoints",

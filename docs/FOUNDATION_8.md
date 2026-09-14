@@ -57,6 +57,8 @@ Derived from existing ClankOps state:
   immutable evidence-binding metadata
 - Current Foundation 6 deployment surfaces with Mission attribution and
   authority/provenance fields (no credentials or webhook URLs)
+- Foundation 10 managed process observations (exit / start-failed facts;
+  display age is not part of `context_fingerprint`)
 - Open blockers, unfinished tasks, recent decisions for each unfinished Mission
 - Current branch / HEAD / working-tree when locally observable
 - Evidence timestamps and provenance
@@ -103,11 +105,11 @@ They do not modify Cursor, Codex, GLM, or Grok. They do not add credentials.
 
 `scripts/clankops-dev.ps1` may run `packet`, `prepare`, `admit`, and `launch`
 as a thin wrapper around the same commands. Classification stays in Python.
-See [Foundation 9](FOUNDATION_9.md).
+See [Foundation 9](FOUNDATION_9.md) and [Foundation 10](FOUNDATION_10.md).
 
 ## Out of scope
 
-- Foundation 10
+- Foundation 11
 - LLM summarisation
 - A Clank health score
 - Mutating product-Clank repositories

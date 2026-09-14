@@ -26,6 +26,9 @@ REASON_GIT_DRIFT = "GIT_DRIFT"
 REASON_DIRTY_WITHOUT_OPEN_SESSION = "DIRTY_WITHOUT_OPEN_SESSION"
 REASON_CI_EVIDENCE_BEHIND_MISSION = "CI_EVIDENCE_BEHIND_MISSION"
 REASON_DEPLOYMENT_DIFFERS_FROM_MISSION = "DEPLOYMENT_DIFFERS_FROM_MISSION"
+REASON_MANAGED_PROCESS_EXITED_WITH_OPEN_SESSION = (
+    "MANAGED_PROCESS_EXITED_WITH_OPEN_SESSION"
+)
 
 CLASS_INTEGRITY = "integrity"
 CLASS_INFORMATIONAL = "informational"
@@ -49,6 +52,7 @@ _CODE_ORDER = {
     REASON_CI_EVIDENCE_BEHIND_MISSION: 3,
     REASON_DEPLOYMENT_DIFFERS_FROM_MISSION: 4,
     REASON_STALE_OPEN_SESSION: 5,
+    REASON_MANAGED_PROCESS_EXITED_WITH_OPEN_SESSION: 6,
 }
 
 DEFAULT_THRESHOLD_LABEL = "24h"
@@ -231,6 +235,60 @@ def _stale_session_item(
         provenance=[str(EventSource.SYSTEM)],
         threshold=threshold_label,
         threshold_source=threshold_source,
+    )
+
+
+def _managed_process_exited_item(
+    clank: dict[str, Any],
+    session: dict[str, Any],
+    now: datetime,
+) -> dict[str, Any] | None:
+    process = session.get("managed_process") or {}
+    if process.get("status") != "EXITED":
+        return None
+    if not session.get("open"):
+        return None
+    session_id = session.get("session_id")
+    exit_code = process.get("exit_code")
+    observed = process.get("observed_at")
+    age = process.get("process_age")
+    actor = process.get("actor") or session.get("actor")
+    launcher = process.get("launcher") or session.get("launcher")
+    mission = None
+    if session.get("mission_display"):
+        mission = {
+            "display_id": session.get("mission_display"),
+            "mission_id": session.get("mission_id"),
+            "state": session.get("mission_state"),
+        }
+    return _item(
+        clank=clank,
+        mission=mission,
+        reason_code=REASON_MANAGED_PROCESS_EXITED_WITH_OPEN_SESSION,
+        reason=(
+            f"managed process exited (code {exit_code}) for Session {session_id}; "
+            f"Session remains OPEN; explicit Foundation 1 handoff required"
+        ),
+        item_class=CLASS_INFORMATIONAL,
+        timestamp=observed,
+        age=age,
+        evidence={
+            "session_id": session_id,
+            "mission_id": session.get("mission_id"),
+            "actor": actor,
+            "launcher": launcher,
+            "exit_code": exit_code,
+            "observed_at": observed,
+            "process_age": age,
+            "executable": process.get("executable"),
+            "observation_id": process.get("observation_id"),
+        },
+        suggested_action=(
+            "Perform an explicit Foundation 1 handoff or end the Session. "
+            "Process exit is evidence, not a handoff."
+        ),
+        source=str(EventSource.SYSTEM),
+        provenance=[str(EventSource.SYSTEM), "clankops.launch"],
     )
 
 
@@ -543,6 +601,9 @@ def attention_report(
         if dirty:
             items.append(dirty)
         for session in open_for:
+            exited = _managed_process_exited_item(clank_row, session, instant)
+            if exited:
+                items.append(exited)
             if session.get("stale"):
                 items.append(
                     _stale_session_item(
@@ -598,6 +659,10 @@ def format_attention_text(report: dict[str, Any]) -> str:
             "observed",
             "artefact_sha",
             "deployed_sha",
+            "exit_code",
+            "actor",
+            "launcher",
+            "observed_at",
         ):
             value = evidence.get(key)
             if value:

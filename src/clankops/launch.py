@@ -1,7 +1,8 @@
 """Managed agent launch gate. Prepare, admit, then spawn. Fail closed.
 
-Does not invent Missions, handoffs, or next actions. Child exit is not a
-Mission completion. Actor and launcher names are provenance, not permission.
+Does not invent Missions, handoffs, or next actions. Child exit is
+observed evidence, not a Mission completion or Session close. Actor and
+launcher names are provenance, not permission.
 """
 
 from __future__ import annotations
@@ -15,6 +16,11 @@ from typing import Any, Callable, Mapping, Sequence
 from clankops.agent import evaluate_admission, prepare_agent, require_actor
 from clankops.enums import EventType
 from clankops.errors import ValidationError
+from clankops.process import (
+    command_identity,
+    record_process_exited,
+    record_process_start_failed,
+)
 from clankops.resume import (
     STATUS_AMBIGUOUS,
     STATUS_NO_UNFINISHED_MISSION,
@@ -250,12 +256,45 @@ def launch_agent(
         db=db,
     )
     run = runner or subprocess.run
-    completed = run(argv, env=child_env, check=False, shell=False, cwd=cwd)
+    process = None
+    exit_code = None
+    try:
+        completed = run(argv, env=child_env, check=False, shell=False, cwd=cwd)
+    except OSError as exc:
+        process = record_process_start_failed(
+            store,
+            session_id=str(session_id),
+            argv=argv,
+            actor=requested,
+            launcher=launcher_id,
+            context_fingerprint=str(evaluated["context_fingerprint"]),
+            error=type(exc).__name__,
+        )
+        raise ValidationError(
+            f"agent process could not be started ({type(exc).__name__}); "
+            "Session remains open; this is not a process exit"
+        ) from exc
     exit_code = getattr(completed, "returncode", None)
+    if isinstance(exit_code, int):
+        process = record_process_exited(
+            store,
+            session_id=str(session_id),
+            exit_code=exit_code,
+            argv=argv,
+            actor=requested,
+            launcher=launcher_id,
+            context_fingerprint=str(evaluated["context_fingerprint"]),
+        )
     return {
         "launched": True,
-        "argv": argv,
+        "command": command_identity(argv),
         "exit_code": exit_code,
+        "process": {
+            "observation_id": process.get("observation_id") if process else None,
+            "kind": process.get("kind") if process else None,
+            "exit_code": process.get("exit_code") if process else exit_code,
+            "status": process.get("kind") if process else "UNKNOWN",
+        },
         "requested_actor": requested,
         "launcher": launcher_id,
         "mission": mission_row["display_id"],

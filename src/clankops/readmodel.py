@@ -7,6 +7,7 @@ from typing import Any
 
 from clankops.enums import CensusClassification, EventType, MissionState
 from clankops.events import list_events
+from clankops.process import session_process_view
 from clankops.reconcile import reconcile_clank
 from clankops.store import Store
 from clankops.timefmt import format_age, parse_utc, short_head
@@ -202,6 +203,9 @@ def observe_session(
         "anomaly": (
             "open Session attached to a non-ACTIVE Mission" if anomaly else None
         ),
+        "managed_process": session_process_view(store, row, now=instant),
+        "session": "OPEN" if row.get("ended_utc") is None else "CLOSED",
+        "handoff": "MISSING" if row.get("ended_utc") is None else "RECORDED",
     }
 
 
