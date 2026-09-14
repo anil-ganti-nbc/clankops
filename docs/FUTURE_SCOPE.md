@@ -2,8 +2,8 @@
 
 Ideas noticed during Foundation 0. Do not treat this list as a backlog
 commitment. Fleet Harvest 1 implemented one-shot local Git harvest and
-worktree inventory; scheduling and remote GitHub freshness remain out of
-scope.
+worktree inventory. Fleet Pulse 1 implemented optional Windows scheduling
+of that same command. Remote GitHub freshness remains out of scope.
 
 ## Terminal / UI
 
@@ -20,8 +20,10 @@ scope.
 - Periodic local `git` harvest per registered path (still read-only) —
   **Harvest 1** implements one-shot `clankctl harvest local-git` with
   semantic-state dedup, harvest-run freshness, worktree inventory, and
-  dry-run. **Scheduling is not implemented.** Remote GitHub freshness is
-  not part of Harvest 1 (no fetch, no GitHub polling).
+  dry-run. **Fleet Pulse 1** implements optional Windows Task Scheduler
+  cadence for that same command (explicit install; default every 10
+  minutes; one-shot; no daemon). Remote GitHub freshness is still not
+  implemented (no fetch, no GitHub polling).
 - GitHub compare against agent-reported SHAs so `AGENT_REPORT` is never silently promoted
 - PR/issue attachment from `gh`
 - Worktree inventory — **partially implemented** by Harvest 1 as local
