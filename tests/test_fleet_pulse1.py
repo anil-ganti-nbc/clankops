@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ from clankops.pulse import (
     plan_install,
     plan_remove,
     quote_windows_arg,
+    safety_contract,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -175,7 +177,17 @@ def test_install_plan_idempotent_and_replace_reports_fields() -> None:
     spec = _spec()
     first = plan_install(None, spec)
     assert first["action"] == "create"
-    same = plan_install(
+    same = plan_install(safety_contract(spec), spec)
+    assert same["action"] == "unchanged"
+    assert same["changed_fields"] == []
+    other = plan_install({**safety_contract(spec), "interval_minutes": 30}, spec)
+    assert other["action"] == "replace"
+    assert other["changed_fields"] == ["interval_minutes"]
+
+
+def test_narrow_existing_facts_are_not_unchanged() -> None:
+    spec = _spec()
+    narrow = plan_install(
         {
             "task_name": spec["task_name"],
             "execute": spec["execute"],
@@ -185,20 +197,9 @@ def test_install_plan_idempotent_and_replace_reports_fields() -> None:
         },
         spec,
     )
-    assert same["action"] == "unchanged"
-    assert same["changed_fields"] == []
-    other = plan_install(
-        {
-            "task_name": spec["task_name"],
-            "execute": spec["execute"],
-            "argument_string": spec["argument_string"],
-            "interval_minutes": 30,
-            "multiple_instances": spec["multiple_instances"],
-        },
-        spec,
-    )
-    assert other["action"] == "replace"
-    assert other["changed_fields"] == ["interval_minutes"]
+    assert narrow["action"] == "replace"
+    assert "action_count" in narrow["changed_fields"]
+    assert "start_when_available" in narrow["changed_fields"]
 
 
 def test_remove_targets_only_canonical_and_missing_is_benign() -> None:
@@ -208,6 +209,48 @@ def test_remove_targets_only_canonical_and_missing_is_benign() -> None:
         plan_remove({"task_name": "Something Else"})
     with pytest.raises(ValidationError, match="non-canonical"):
         plan_install({"task_name": "Windows Update", "execute": "x"}, _spec())
+
+
+def _matching(spec: dict, **overrides) -> dict:
+    data = safety_contract(spec)
+    data.update(overrides)
+    return data
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("action_count", 2),
+        ("trigger_count", 2),
+        ("start_when_available", False),
+        ("wake_to_run", True),
+        ("disallow_start_if_on_batteries", True),
+        ("stop_if_going_on_batteries", True),
+        ("run_only_if_network_available", True),
+        ("execution_time_limit_minutes", 15),
+        ("logon_type", "Password"),
+        ("run_level", "Highest"),
+        ("principal_kind", "Password/Highest/SYSTEM"),
+        ("repetition_indefinite", False),
+        ("multiple_instances", "Parallel"),
+    ],
+)
+def test_safety_contract_drift_is_replace_never_unchanged(field: str, value) -> None:
+    spec = _spec()
+    plan = plan_install(_matching(spec, **{field: value}), spec)
+    assert plan["action"] == "replace"
+    assert field in plan["changed_fields"]
+
+
+def test_canonical_complete_task_is_unchanged() -> None:
+    spec = _spec()
+    plan = plan_install(_matching(spec), spec)
+    assert plan["action"] == "unchanged"
+    assert plan["changed_fields"] == []
+    assert spec["action_count"] == 1
+    assert spec["trigger_count"] == 1
+    assert spec["repetition_indefinite"] is True
+    assert spec["principal_kind"] == "interactive-limited-current-user"
 
 
 def test_status_does_not_call_anything_health() -> None:
@@ -272,12 +315,17 @@ def test_powershell_script_contract_without_host_mutation() -> None:
     assert "cmd.exe" not in source.lower()
     assert "Register-ScheduledTask" in source
     assert "Unregister-ScheduledTask" in source
-    dry_run_start = source.index('"dry-run"')
-    install_start = source.index('"install"')
-    dry_run_block = source[dry_run_start:install_start]
-    assert "Register-ScheduledTask" not in dry_run_block
-    assert "Unregister-ScheduledTask" not in dry_run_block
-    assert "Get-ScheduledTask" not in dry_run_block
+    assert "MaxValue" not in source
+    assert "RepetitionInterval" in source
+    pre, _, post = source.partition("switch ($Command)")
+    assert pre.count("function Get-ClankOpsPulseContext") == 1
+    status_remove = post.split('"dry-run"', 1)[0]
+    assert "Get-ClankOpsPulseContext" not in status_remove
+    assert "Get-ClankOpsPulsePython" not in status_remove
+    assert "Get-ClankOpsPulseSpec" not in status_remove
+    assert "Register-ClankOpsHarvestTask" not in status_remove
+    before_install, _, _ = post.partition('"install"')
+    assert "Register-ClankOpsHarvestTask" not in before_install
     assert "ClankOps Fleet Harvest" in source
     assert "IgnoreNew" in source
     assert "StartWhenAvailable" in source
@@ -291,9 +339,9 @@ def test_powershell_script_contract_without_host_mutation() -> None:
     assert "git push" not in source
     assert "api.github.com" not in source.lower()
     assert "gh api" not in source.lower()
-    assert "Assert-CanonicalTaskName" in source
-    assert "Unregister-ScheduledTask -TaskName $TaskName" in source
-    assert source.count("ClankOps Fleet Harvest") >= 1
+    assert "Assert-ClankOpsPulseTaskName" in source
+    assert "Test-ClankOpsPulsePythonVersion" in source
+    assert "3.14" in source
     assert "Windows Update" not in source
 
 
@@ -377,3 +425,196 @@ def test_powershell_dry_run_performs_zero_scheduler_mutation(tmp_path: Path) -> 
     )
     assert (after.stdout or "").strip() == before
     assert not db.exists()
+
+
+def _windows_ps() -> str | None:
+    if os.name != "nt":
+        return None
+    return shutil.which("powershell") or shutil.which("pwsh")
+
+
+@pytest.mark.skipif(_windows_ps() is None, reason="Windows PowerShell Task Scheduler required")
+def test_status_works_without_valid_clankops_root(tmp_path: Path) -> None:
+    exe = _windows_ps()
+    assert exe
+    missing = tmp_path / "no-such-clankops"
+    proc = _ps_run(
+        exe,
+        [
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            str(SCRIPT),
+            "status",
+            "-ClankOpsRoot",
+            str(missing),
+            "-Python",
+            str(missing / "python.exe"),
+        ],
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "installed:" in proc.stdout
+    assert "health" not in proc.stdout.lower()
+    assert "ClankOps Fleet Harvest" in proc.stdout
+
+
+@pytest.mark.skipif(_windows_ps() is None, reason="Windows PowerShell Task Scheduler required")
+def test_remove_works_without_valid_clankops_root_or_python(tmp_path: Path) -> None:
+    exe = _windows_ps()
+    assert exe
+    missing = tmp_path / "no-such-clankops"
+    proc = _ps_run(
+        exe,
+        [
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            str(SCRIPT),
+            "remove",
+            "-ClankOpsRoot",
+            str(missing),
+            "-Python",
+            str(missing / "python.exe"),
+        ],
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "ClankOps Fleet Harvest" in proc.stdout
+    assert "health" not in proc.stdout.lower()
+
+
+@pytest.mark.skipif(_windows_ps() is None, reason="Windows PowerShell Task Scheduler required")
+def test_windows_temporary_task_create_inspect_remove() -> None:
+    exe = _windows_ps()
+    assert exe
+    name = f"ClankOps Fleet Harvest TEST {uuid.uuid4()}"
+    prod_before = _ps_run(
+        exe,
+        [
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Get-ScheduledTask -TaskName 'ClankOps Fleet Harvest' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty TaskName",
+        ],
+    )
+    assert (prod_before.stdout or "").strip() == ""
+    inspect_cmd = (
+        f"$t = Get-ScheduledTask -TaskName '{name}'; "
+        "$a = @($t.Actions); $tr = @($t.Triggers); "
+        "$rep = $tr[0].Repetition; "
+        "$dur = [string]$rep.Duration; "
+        "[ordered]@{"
+        "action_count=$a.Count; trigger_count=$tr.Count; "
+        "execute=[string]$a[0].Execute; arguments=[string]$a[0].Arguments; "
+        "interval=[string]$rep.Interval; duration=$dur; "
+        "duration_empty=[string]::IsNullOrWhiteSpace($dur); "
+        "multiple=[string]$t.Settings.MultipleInstances; "
+        "start_when_available=[bool]$t.Settings.StartWhenAvailable; "
+        "disallow_battery=[bool]$t.Settings.DisallowStartIfOnBatteries; "
+        "stop_battery=[bool]$t.Settings.StopIfGoingOnBatteries; "
+        "wake=[bool]$t.Settings.WakeToRun; "
+        "network=[bool]$t.Settings.RunOnlyIfNetworkAvailable; "
+        "limit=[string]$t.Settings.ExecutionTimeLimit; "
+        "logon=[string]$t.Principal.LogonType; "
+        "runlevel=[string]$t.Principal.RunLevel"
+        "} | ConvertTo-Json -Compress"
+    )
+    try:
+        created = _ps_run(
+            exe,
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
+                str(SCRIPT),
+                "install",
+                "-TaskName",
+                name,
+                "-Python",
+                sys.executable,
+                "-ClankOpsRoot",
+                str(ROOT),
+                "-IntervalMinutes",
+                "10",
+            ],
+            cwd=str(ROOT),
+            env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+        )
+        assert created.returncode == 0, created.stderr + created.stdout
+        inspected = _ps_run(exe, ["-NoProfile", "-NonInteractive", "-Command", inspect_cmd])
+        assert inspected.returncode == 0, inspected.stderr
+        facts = json.loads(inspected.stdout)
+        assert facts["action_count"] == 1
+        assert facts["trigger_count"] == 1
+        assert facts["execute"] == sys.executable or Path(facts["execute"]).resolve() == Path(sys.executable).resolve()
+        assert "harvest" in facts["arguments"] and "local-git" in facts["arguments"]
+        assert facts["interval"] == "PT10M"
+        assert facts["duration_empty"] is True
+        assert facts["duration"] in ("", None)
+        assert facts["multiple"] == "IgnoreNew"
+        assert facts["start_when_available"] is True
+        assert facts["disallow_battery"] is False
+        assert facts["stop_battery"] is False
+        assert facts["wake"] is False
+        assert facts["network"] is False
+        assert facts["logon"] == "Interactive"
+        assert facts["runlevel"] == "Limited"
+        limit = str(facts.get("limit") or "")
+        assert "1:00" in limit or "PT1H" in limit.upper() or limit.endswith("01:00:00")
+        status = _ps_run(
+            exe,
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
+                str(SCRIPT),
+                "status",
+                "-TaskName",
+                name,
+                "-ClankOpsRoot",
+                str(ROOT / "missing-root"),
+                "-Python",
+                str(ROOT / "missing-python.exe"),
+            ],
+        )
+        assert status.returncode == 0, status.stderr
+        assert "installed: yes" in status.stdout
+        assert name in status.stdout
+    finally:
+        removed = _ps_run(
+            exe,
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
+                str(SCRIPT),
+                "remove",
+                "-TaskName",
+                name,
+                "-ClankOpsRoot",
+                str(ROOT / "missing-root"),
+                "-Python",
+                str(ROOT / "missing-python.exe"),
+            ],
+        )
+        leftover = _ps_run(
+            exe,
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                f"Get-ScheduledTask -TaskName '{name}' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty TaskName",
+            ],
+        )
+        prod = _ps_run(
+            exe,
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Get-ScheduledTask -TaskName 'ClankOps Fleet Harvest' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty TaskName",
+            ],
+        )
+        assert removed.returncode == 0, removed.stderr
+        assert (leftover.stdout or "").strip() == ""
+        assert (prod.stdout or "").strip() == ""
+

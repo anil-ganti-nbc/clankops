@@ -90,8 +90,9 @@ Database resolution matches ClankOps conventions:
 2. otherwise `%USERPROFILE%\.clankops\clankops.db`
 
 The scheduled action stores that absolute path as `--db`. The Python
-executable is the interpreter that can import this ClankOps checkout,
-not the bare word `python`.
+executable is Python **3.14+** that can import this ClankOps checkout,
+not the bare word `python` and not an older interpreter that happens to
+import today's source.
 
 ## Dry-run
 
@@ -109,15 +110,26 @@ No secrets. Secret-shaped values are refused.
 ## Install idempotence
 
 One canonical task identity. Installing twice with the same
-configuration is success without a duplicate. A different configuration
-replaces the existing task and reports the changed fields.
+configuration is success without a duplicate. "Unchanged" requires the
+full safety-relevant contract: one action, one trigger, execute,
+arguments, cadence, indefinite repetition (omitted Duration),
+IgnoreNew, StartWhenAvailable, battery allowed, WakeToRun false, no
+network requirement, 60-minute execution limit, Interactive current-user
+principal, Limited run level. Extra actions or triggers are structural
+drift and are replaced. A different configuration replaces the existing
+task and reports the changed fields.
 
 ## Remove
 
-Remove deletes only `ClankOps Fleet Harvest`. It does not delete ledger
-evidence, the ClankOps database, logs, Missions, unrelated Python
-processes, or other scheduled tasks. If no task exists, the result is
-deterministic and benign.
+Remove deletes only the named canonical task (`ClankOps Fleet Harvest`,
+or an explicit `ClankOps Fleet Harvest TEST <uuid>` probe). It does not
+delete ledger evidence, the ClankOps database, logs, Missions, unrelated
+Python processes, or other scheduled tasks. If no task exists, the
+result is deterministic and benign.
+
+`status` and `remove` talk only to Task Scheduler. They must succeed
+when the ClankOps checkout has moved, Python is gone, or the package
+cannot be imported. A stranded canonical task must always be removable.
 
 ## Status
 
@@ -130,8 +142,10 @@ result codes are not Clank correctness.
 
 ## Overlap
 
-If a harvest is still running when the next trigger fires, Windows is
-configured **IgnoreNew**: do not start a second instance.
+The trigger is `-Once -At <start> -RepetitionInterval <n minutes>` with
+**no** `Repetition.Duration`. On Windows, a registered trigger with an
+empty Duration repeats indefinitely. Do not persist
+`TimeSpan.MaxValue.ToString()`.
 
 ## Missed runs
 

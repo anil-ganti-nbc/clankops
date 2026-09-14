@@ -22,8 +22,48 @@ MIN_INTERVAL_MINUTES = 1
 MAX_INTERVAL_MINUTES = 1440
 CANONICAL_TASK_NAME = "ClankOps Fleet Harvest"
 MULTIPLE_INSTANCES = "IgnoreNew"
-
 CLI_TAIL = ("harvest", "local-git")
+
+SAFETY_FIELDS = (
+    "task_name",
+    "action_count",
+    "trigger_count",
+    "execute",
+    "argument_string",
+    "interval_minutes",
+    "repetition_indefinite",
+    "multiple_instances",
+    "start_when_available",
+    "disallow_start_if_on_batteries",
+    "stop_if_going_on_batteries",
+    "wake_to_run",
+    "run_only_if_network_available",
+    "execution_time_limit_minutes",
+    "allow_demand_start",
+    "principal_kind",
+    "logon_type",
+    "run_level",
+    "store_password",
+)
+
+_TRUE = frozenset({"true", "yes", "1", "on"})
+_FALSE = frozenset({"false", "no", "0", "off"})
+_MULTIPLE_INSTANCES = {
+    "ignorenew": "IgnoreNew",
+    "2": "IgnoreNew",
+    "ignore new": "IgnoreNew",
+}
+_LOGON = {
+    "interactive": "Interactive",
+    "3": "Interactive",
+    "interactivetoken": "Interactive",
+}
+_RUNLEVEL = {
+    "limited": "Limited",
+    "0": "Limited",
+    "leastprivilege": "Limited",
+    "lua": "Limited",
+}
 _STANDALONE_FORBIDDEN = frozenset(
     {"github", "fetch", "pull", "push", "clone", "ls-remote", "ssh"}
 )
@@ -201,6 +241,11 @@ def build_task_spec(
         "logon_type": "Interactive",
         "one_shot": True,
         "network": False,
+        "action_count": 1,
+        "trigger_count": 1,
+        "repetition_indefinite": True,
+        "principal_kind": "interactive-limited-current-user",
+        "execution_time_limit_minutes": 60,
         "command_identity": {
             "module": "clankops",
             "argv_tail": ["--db", db, *CLI_TAIL],
@@ -222,26 +267,175 @@ def build_task_spec(
     return spec
 
 
-def identity_fields(spec: dict[str, Any]) -> dict[str, Any]:
+def _as_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if value in (0, 1):
+            return bool(value)
+        return None
+    text = str(value).strip().lower()
+    if text in _TRUE:
+        return True
+    if text in _FALSE:
+        return False
+    return None
+
+
+def _as_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    text = str(value).strip()
+    if re.fullmatch(r"[+-]?\d+", text):
+        return int(text)
+    return None
+
+
+def normalize_multiple_instances(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return _MULTIPLE_INSTANCES.get(text.lower().replace("_", ""), text)
+
+
+def normalize_logon_type(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return _LOGON.get(text.lower().replace(" ", ""), text)
+
+
+def normalize_run_level(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return _RUNLEVEL.get(text.lower().replace(" ", ""), text)
+
+
+def is_indefinite_duration(value: Any) -> bool:
+    """Omitted/empty Task Scheduler Duration means indefinite."""
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip()
+    if text == "" or text.lower() in {"none", "null", "indefinite"}:
+        return True
+    return False
+
+
+def parse_execution_limit_minutes(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    as_int = _as_int(value)
+    if as_int is not None:
+        return as_int
+    text = str(value).strip().upper()
+    match = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", text)
+    if match:
+        hours = int(match.group(1) or 0)
+        minutes = int(match.group(2) or 0)
+        seconds = int(match.group(3) or 0)
+        return hours * 60 + minutes + (1 if seconds else 0)
+    match = re.fullmatch(r"(\d+):(\d+):(\d+)(?:\.\d+)?", text)
+    if match:
+        return int(match.group(1)) * 60 + int(match.group(2))
+    return None
+
+
+def safety_contract(data: dict[str, Any]) -> dict[str, Any]:
+    """Normalize scheduler facts used for install idempotence."""
+    settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+    action_count = _as_int(data.get("action_count"))
+    trigger_count = _as_int(data.get("trigger_count"))
+    indefinite = data.get("repetition_indefinite")
+    if indefinite is None:
+        indefinite = is_indefinite_duration(data.get("repetition_duration"))
+    else:
+        indefinite = _as_bool(indefinite)
+    limit = data.get("execution_time_limit_minutes")
+    if limit is None:
+        limit = settings.get("ExecutionTimeLimitMinutes")
+    if limit is None:
+        limit = parse_execution_limit_minutes(data.get("execution_time_limit"))
+    principal = data.get("principal_kind") or data.get("principal")
     return {
-        "task_name": spec.get("task_name"),
-        "execute": spec.get("execute"),
-        "argument_string": spec.get("argument_string"),
-        "interval_minutes": spec.get("interval_minutes"),
-        "multiple_instances": spec.get("multiple_instances"),
+        "task_name": (data.get("task_name") or "").strip() or None,
+        "action_count": action_count,
+        "trigger_count": trigger_count,
+        "execute": data.get("execute"),
+        "argument_string": data.get("argument_string"),
+        "interval_minutes": _as_int(data.get("interval_minutes")),
+        "repetition_indefinite": indefinite,
+        "multiple_instances": normalize_multiple_instances(
+            data.get("multiple_instances") or settings.get("MultipleInstances")
+        ),
+        "start_when_available": _as_bool(
+            data.get("start_when_available")
+            if "start_when_available" in data
+            else settings.get("StartWhenAvailable")
+        ),
+        "disallow_start_if_on_batteries": _as_bool(
+            data.get("disallow_start_if_on_batteries")
+            if "disallow_start_if_on_batteries" in data
+            else settings.get("DisallowStartIfOnBatteries")
+        ),
+        "stop_if_going_on_batteries": _as_bool(
+            data.get("stop_if_going_on_batteries")
+            if "stop_if_going_on_batteries" in data
+            else settings.get("StopIfGoingOnBatteries")
+        ),
+        "wake_to_run": _as_bool(
+            data.get("wake_to_run") if "wake_to_run" in data else settings.get("WakeToRun")
+        ),
+        "run_only_if_network_available": _as_bool(
+            data.get("run_only_if_network_available")
+            if "run_only_if_network_available" in data
+            else settings.get("RunOnlyIfNetworkAvailable")
+        ),
+        "execution_time_limit_minutes": _as_int(limit) if not isinstance(limit, str) else parse_execution_limit_minutes(limit),
+        "allow_demand_start": _as_bool(
+            data.get("allow_demand_start")
+            if "allow_demand_start" in data
+            else settings.get("AllowDemandStart")
+        ),
+        "principal_kind": principal,
+        "logon_type": normalize_logon_type(data.get("logon_type")),
+        "run_level": normalize_run_level(data.get("run_level")),
+        "store_password": _as_bool(data.get("store_password")),
     }
 
 
+def identity_fields(spec: dict[str, Any]) -> dict[str, Any]:
+    return safety_contract(spec)
+
+
 def plan_install(existing: dict[str, Any] | None, spec: dict[str, Any]) -> dict[str, Any]:
-    """Idempotent install plan. Never talks to Task Scheduler."""
-    desired = identity_fields(spec)
+    """Idempotent install plan. Never talks to Task Scheduler.
+
+    Unchanged only if the full safety-relevant contract matches. Extra
+    actions or triggers are structural drift and never succeed as unchanged.
+    """
+    desired = safety_contract(spec)
     if existing is None:
-        return {"action": "create", "changed_fields": sorted(desired), "spec": spec}
+        return {"action": "create", "changed_fields": list(SAFETY_FIELDS), "spec": spec}
     current_name = (existing.get("task_name") or "").strip()
     if current_name and current_name != CANONICAL_TASK_NAME:
         raise ValidationError(f"refusing to mutate non-canonical task {current_name!r}")
-    current = identity_fields({**desired, **existing, "task_name": current_name or CANONICAL_TASK_NAME})
-    changed = [key for key, value in desired.items() if current.get(key) != value]
+    current = safety_contract({**existing, "task_name": current_name or CANONICAL_TASK_NAME})
+    changed = [key for key in SAFETY_FIELDS if current.get(key) != desired.get(key)]
     if not changed:
         return {"action": "unchanged", "changed_fields": [], "spec": spec}
     return {"action": "replace", "changed_fields": changed, "spec": spec}
