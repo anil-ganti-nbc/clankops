@@ -58,6 +58,67 @@ def _mark(label: str) -> str:
     return f"<span class=\"mark\">[{html.escape(label)}]</span>"
 
 
+def _local_git_harvest_html(view: dict[str, Any]) -> str:
+    latest = str(view.get("latest_result") or "")
+    css = "harvest-unknown"
+    status = "NONE"
+    if view.get("semantic_state"):
+        css = "harvest-observed"
+        status = "OBSERVED"
+    if latest in {"TIMEOUT"}:
+        css = "harvest-timeout"
+        status = "TIMEOUT"
+    elif latest in {"ERROR", "AMBIGUOUS_CANONICAL_PATH"}:
+        css = "harvest-error"
+        status = latest
+    elif latest in {"PATH_MISSING", "NOT_A_GIT_REPOSITORY"}:
+        css = "harvest-error"
+        status = latest
+    elif latest in {"OBSERVED_CHANGED", "OBSERVED_UNCHANGED"}:
+        css = "harvest-observed"
+        status = "OBSERVED"
+    state = view.get("semantic_state") or {}
+    head = (state.get("head") or "")[:12] or "unknown"
+    branch = state.get("branch") or ("HEAD" if state.get("detached") else "unknown")
+    if state.get("dirty"):
+        tree = f"DIRTY ({state.get('dirty_count') or 0} paths)"
+    elif state.get("dirty") is False:
+        tree = "CLEAN"
+    else:
+        tree = "unknown"
+    worktrees = state.get("worktrees") or []
+    last_state_note = ""
+    if latest in {"TIMEOUT", "ERROR", "PATH_MISSING", "NOT_A_GIT_REPOSITORY"} and state:
+        last_state_note = (
+            f"<tr><th>last state</th><td>{html.escape(str(branch))} / "
+            f"{html.escape(str(head))} / {html.escape(tree)}</td></tr>"
+            f"<tr><th>latest check</th><td class=\"{css}\">{_mark(status)} "
+            f"{html.escape(view.get('latest_result_detail') or latest)}</td></tr>"
+            f"<tr><th>state observation age</th><td>{html.escape(_unknown(view.get('state_observation_age')))}</td></tr>"
+        )
+    elif view.get("never_harvested"):
+        last_state_note = "<tr><th>harvest</th><td>never harvested</td></tr>"
+    else:
+        last_state_note = (
+            f"<tr><th>branch</th><td>{html.escape(str(branch))}</td></tr>"
+            f"<tr><th>HEAD</th><td>{html.escape(str(head))}</td></tr>"
+            f"<tr><th>working tree</th><td>{_mark(tree.split()[0] if tree else 'UNKNOWN')} {html.escape(tree)}</td></tr>"
+            f"<tr><th>observed state</th><td>{html.escape(_unknown(view.get('state_observation_age')))} ago</td></tr>"
+            f"<tr><th>last checked</th><td>{html.escape(_unknown(view.get('check_age')))} ago</td></tr>"
+        )
+    return f"""
+<h2>LOCAL GIT</h2>
+<p class="muted">Harvested local checkout facts. This is not GitHub, CI, deployment, Mission completion, or health.</p>
+<table>
+  <tr><th>status</th><td class="{css}">{_mark(status)}</td></tr>
+  <tr><th>checkout</th><td>{html.escape(_unknown(view.get('checkout_path')))}</td></tr>
+  {last_state_note}
+  <tr><th>worktrees</th><td>{html.escape(str(len(worktrees)))}</td></tr>
+  <tr><th>source</th><td>{_mark(str(view.get('source') or 'LOCAL_GIT'))}</td></tr>
+</table>
+"""
+
+
 def _load_census(census: dict[str, Any] | None, census_path: str | Path | None) -> dict[str, Any] | None:
     if census is not None:
         return census
@@ -228,6 +289,10 @@ def _page(title: str, body: str) -> str:
     .src {{ font-weight: 700; }}
     h2 {{ margin-top: 1.6rem; font-size: 1.05rem; }}
     .note {{ margin: 0.4rem 0 1rem; }}
+    .harvest-observed {{ color: #8fd19e; }}
+    .harvest-timeout {{ color: #e0b15c; }}
+    .harvest-error {{ color: #e07a7a; }}
+    .harvest-unknown {{ color: #8aa0b5; }}
     .attention-item {{ display: flex; gap: 0.7rem; border: 1px solid #243040; border-left-width: 0.45rem; padding: 0.45rem 0.6rem; margin: 0.4rem 0; }}
     .attention-integrity {{ border-left-style: solid; }}
     .attention-informational {{ border-left-style: dotted; }}
@@ -642,7 +707,19 @@ def _dossier_html(payload: dict[str, Any]) -> str:
     heading = f"<h1>{html.escape(ident.get('display_name') or ident.get('slug') or '')}</h1>"
     return _page(
         f"{ident.get('slug')} · ClankOps Terminal",
-        heading + now_section + reconcile_section + timeline + missions + reconciliations + features + tasks + decisions + artifacts + deployments + brief_pre,
+        heading
+        + now_section
+        + reconcile_section
+        + _local_git_harvest_html(payload.get("local_git_harvest") or {})
+        + timeline
+        + missions
+        + reconciliations
+        + features
+        + tasks
+        + decisions
+        + artifacts
+        + deployments
+        + brief_pre,
     )
 
 

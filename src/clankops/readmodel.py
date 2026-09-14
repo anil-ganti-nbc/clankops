@@ -401,6 +401,20 @@ def event_summary(event: Any) -> str:
         return " | ".join(bits)
     if event_type == EventType.HANDOFF_RECORDED:
         return f"HANDOFF RECORDED -> {payload.get('to_state') or 'unknown'}"
+    if event_type == EventType.LOCAL_GIT_STATE_OBSERVED:
+        branch = payload.get("branch") or ("HEAD" if payload.get("detached") else "unknown")
+        head = short_head(payload.get("head")) or "unknown"
+        dirty = payload.get("dirty")
+        tree = "DIRTY" if dirty else ("CLEAN" if dirty is False else "UNKNOWN")
+        return f"{branch} {head} {tree}"
+    if event_type == EventType.LOCAL_GIT_HARVEST_COMPLETED:
+        return (
+            f"targets={payload.get('target_count') or 0} "
+            f"changed={payload.get('observed_changed') or 0} "
+            f"unchanged={payload.get('observed_unchanged') or 0} "
+            f"skipped={payload.get('skipped') or 0} "
+            f"errors={payload.get('errors') or 0}"
+        )
     if event_type == EventType.DEPLOYMENT_OBSERVED:
         env = payload.get("environment") or "unknown"
         surface = payload.get("surface_id") or "unknown"
@@ -509,6 +523,7 @@ def dossier(
         inspect_remote=inspect_remote,
     )
     from clankops.deployment import current_deployments
+    from clankops.harvest import local_git_harvest_view
     from clankops.reconciliation import reconciliations_for_clank
 
     recs = reconciliations_for_clank(store, detail["clank_id"])
@@ -538,6 +553,7 @@ def dossier(
             )
         ],
         "deployments": current_deployments(store, detail["clank_id"]),
+        "local_git_harvest": local_git_harvest_view(store, detail["clank_id"], now=instant),
         "brief": brief,
     }
 

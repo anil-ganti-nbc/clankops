@@ -17,6 +17,7 @@ from clankops.errors import NotFoundError
 from clankops.process import observation_facts_for_clank
 from clankops.readmodel import DEFAULT_STALE, open_sessions
 from clankops.reconcile import _checkpoint_event, github_repo_for_clank, reconcile_clank
+from clankops.harvest import local_git_harvest_facts, local_git_harvest_view
 from clankops.reconciliation import reconciliations_for_clank
 from clankops.store import Store
 from clankops.timefmt import short_head
@@ -34,6 +35,13 @@ _EPHEMERAL_KEYS = frozenset(
         "open_session_age",
         "process_age",
         "process_age_seconds",
+        "last_checked_at",
+        "check_age",
+        "check_age_seconds",
+        "latest_result",
+        "latest_result_detail",
+        "harvest_run_id",
+        "state_observation_age",
     }
 )
 _FINGERPRINT_SKIP_KEYS = frozenset(
@@ -436,6 +444,9 @@ def resume_packet(
         "deployments": _deployment_rows(store, clank_id, instant),
         "managed_process_observations": observation_facts_for_clank(store, clank_id),
         "mission_reconciliations": reconciliations_for_clank(store, clank_id),
+        "local_git_harvest": local_git_harvest_facts(
+            local_git_harvest_view(store, clank_id, now=instant)
+        ),
     }
     packet["context_fingerprint"] = context_fingerprint(packet)
     return packet
@@ -545,6 +556,21 @@ def format_resume_text(packet: dict[str, Any]) -> str:
                 f"  {display} {row.get('from_state')} -> {row.get('to_state')} "
                 f"basis={row.get('reconciliation_basis') or 'unknown'} "
                 f"reason={row.get('reason') or 'unknown'}"
+            )
+    harvest = packet.get("local_git_harvest") or {}
+    if harvest.get("state_fingerprint") or harvest.get("never_harvested"):
+        lines.append("Local Git Harvest:")
+        if harvest.get("never_harvested"):
+            lines.append("  never harvested")
+        else:
+            state = harvest.get("semantic_state") or {}
+            branch = state.get("branch") or ("HEAD" if state.get("detached") else "unknown")
+            head = short_head(state.get("head")) or "unknown"
+            dirty = state.get("dirty")
+            tree = "DIRTY" if dirty else ("CLEAN" if dirty is False else "UNKNOWN")
+            lines.append(
+                f"  {branch} {head} {tree} "
+                f"source={harvest.get('source') or 'LOCAL_GIT'}"
             )
     lines.append(f"Context: {packet.get('context_fingerprint')}")
     return "\n".join(lines) + "\n"

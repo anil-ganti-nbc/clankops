@@ -525,6 +525,100 @@ def _apply_agent_process_observation(conn: sqlite3.Connection, event: Event) -> 
     )
 
 
+def _semantic_state_json(payload: dict[str, Any]) -> str:
+    skip = {"observation_id", "observed_at"}
+    state = {key: value for key, value in payload.items() if key not in skip}
+    return json.dumps(state, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def _apply_local_git_state_observed(conn: sqlite3.Connection, event: Event) -> None:
+    p = _payload(event)
+    conn.execute(
+        """
+        INSERT INTO local_git_observations (
+            observation_id, clank_id, checkout_key, checkout_path,
+            state_fingerprint, state_json, event_id, ledger_seq, observed_at, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            p["observation_id"],
+            p.get("clank_id") or event.clank_id,
+            p["checkout_key"],
+            p["checkout_path"],
+            p["state_fingerprint"],
+            _semantic_state_json(p),
+            event.event_id,
+            event.ledger_seq,
+            p.get("observed_at") or event.ts_utc,
+            p.get("source") or event.source,
+        ),
+    )
+
+
+def _apply_local_git_harvest_completed(conn: sqlite3.Connection, event: Event) -> None:
+    p = _payload(event)
+    conn.execute(
+        """
+        INSERT INTO local_git_harvest_runs (
+            run_id, scope, target_slug, started_at, finished_at, target_count,
+            observed_changed, observed_unchanged, unavailable, skipped, errors,
+            event_id, ledger_seq, actor, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            p["run_id"],
+            p.get("scope") or "fleet",
+            p.get("target"),
+            p.get("started_at") or event.ts_utc,
+            p.get("finished_at") or event.ts_utc,
+            int(p.get("target_count") or 0),
+            int(p.get("observed_changed") or 0),
+            int(p.get("observed_unchanged") or 0),
+            int(p.get("unavailable") or 0),
+            int(p.get("skipped") or 0),
+            int(p.get("errors") or 0),
+            event.event_id,
+            event.ledger_seq,
+            event.actor,
+            p.get("source") or event.source,
+        ),
+    )
+    for row in p.get("results") or []:
+        detached = row.get("detached")
+        dirty = row.get("dirty")
+        conn.execute(
+            """
+            INSERT INTO local_git_harvest_results (
+                result_id, run_id, clank_id, clank_slug, checkout_key, checkout_path,
+                result_code, observation_event_id, observation_ledger_seq,
+                state_fingerprint, error_class, detail, branch, detached, head,
+                dirty, dirty_count, event_id, ledger_seq
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row.get("result_id") or event.event_id,
+                p["run_id"],
+                row["clank_id"],
+                row.get("clank_slug"),
+                row.get("checkout_key"),
+                row.get("checkout_path"),
+                row.get("result_code") or row.get("result"),
+                row.get("observation_event_id"),
+                row.get("observation_ledger_seq"),
+                row.get("state_fingerprint"),
+                row.get("error_class"),
+                row.get("detail"),
+                row.get("branch"),
+                None if detached is None else (1 if detached else 0),
+                row.get("head"),
+                None if dirty is None else (1 if dirty else 0),
+                row.get("dirty_count"),
+                event.event_id,
+                event.ledger_seq,
+            ),
+        )
+
+
 HANDLERS: dict[str, Handler] = {
     EventType.CLANK_REGISTERED: _apply_clank_registered,
     EventType.CLANK_ALIAS_ADDED: _apply_clank_alias_added,
@@ -551,6 +645,8 @@ HANDLERS: dict[str, Handler] = {
     EventType.DEPLOYMENT_OBSERVED: _apply_deployment_observed,
     EventType.AGENT_PROCESS_EXITED: _apply_agent_process_observation,
     EventType.AGENT_PROCESS_START_FAILED: _apply_agent_process_observation,
+    EventType.LOCAL_GIT_STATE_OBSERVED: _apply_local_git_state_observed,
+    EventType.LOCAL_GIT_HARVEST_COMPLETED: _apply_local_git_harvest_completed,
 }
 
 

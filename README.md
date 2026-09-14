@@ -16,6 +16,8 @@ Foundation 10 records **managed process exit** as immutable evidence. Process ex
 
 Foundation 11 adds **Mission state reconciliation**: an explicit, auditable correction of stale projected Mission state from evidence. It does not rewrite history, fabricate an ACTIVE interval, or auto-complete Missions from PR merges.
 
+Fleet Harvest 1 adds **automatic local Git evidence**: ClankOps can walk registered canonical checkouts and record what it independently observed, without claiming GitHub, CI, deployment, Mission completion, or health. See [Fleet Harvest 1](docs/FLEET_HARVEST_1.md).
+
 ```text
 clankctl brief oem-radar
 ```
@@ -24,7 +26,7 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 11 (Mission lifecycle reconciliation and control-plane consolidation). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron. No remote SSH from ClankOps.
+Foundation 11 (Mission lifecycle reconciliation). Fleet Harvest 1 (one-shot local Git evidence). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron. No remote SSH from ClankOps.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 
@@ -79,6 +81,8 @@ python -m clankops --json attention clankops --no-github
 python -m clankops --json resume-packet clankops --no-github
 python -m clankops --json agent prepare clankops --actor cursor --no-github
 python -m clankops --json agent launch clankops --actor cursor --launcher cursor --no-github --command python -c "pass"
+python -m clankops --json harvest local-git --dry-run
+python -m clankops --json harvest local-git
 python -m clankops terminal
 ```
 
@@ -100,6 +104,9 @@ The Terminal is localhost-only and read-only. It does not schedule collection or
 - [Foundation 7 attention queue](docs/FOUNDATION_7.md)
 - [Foundation 8 resume packets](docs/FOUNDATION_8.md)
 - [Foundation 9 launcher admission](docs/FOUNDATION_9.md)
+- [Foundation 10 process exit](docs/FOUNDATION_10.md)
+- [Foundation 11 mission reconciliation](docs/FOUNDATION_11.md)
+- [Fleet Harvest 1 local Git evidence](docs/FLEET_HARVEST_1.md)
 - [Future scope](docs/FUTURE_SCOPE.md)
 
 ## Tests
