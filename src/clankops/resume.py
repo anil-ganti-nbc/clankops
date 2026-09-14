@@ -41,6 +41,7 @@ _EPHEMERAL_KEYS = frozenset(
         "latest_result",
         "latest_result_detail",
         "harvest_run_id",
+        "state_observed_at",
         "state_observation_age",
     }
 )
@@ -570,7 +571,7 @@ def format_resume_text(packet: dict[str, Any]) -> str:
             tree = "DIRTY" if dirty else ("CLEAN" if dirty is False else "UNKNOWN")
             lines.append(
                 f"  {branch} {head} {tree} "
-                f"source={harvest.get('source') or 'LOCAL_GIT'}"
+                f"source={harvest.get('source') or 'UNKNOWN'}"
             )
     lines.append(f"Context: {packet.get('context_fingerprint')}")
     return "\n".join(lines) + "\n"

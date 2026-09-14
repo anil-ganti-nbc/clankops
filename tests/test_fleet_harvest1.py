@@ -16,6 +16,10 @@ from clankops.clock import FrozenClock, TickingClock
 from clankops.enums import EventSource, EventType, MissionState
 from clankops.events import list_events
 from clankops.gitinspect import (
+    RESULT_ERROR,
+    RESULT_NOT_A_GIT_REPOSITORY,
+    RESULT_PATH_MISSING,
+    RESULT_TIMEOUT,
     _bounded_detail,
     harvest_run_git,
     normalize_remote_identity,
@@ -28,13 +32,14 @@ from clankops.harvest import (
     RESULT_OBSERVED_CHANGED,
     RESULT_OBSERVED_UNCHANGED,
     checkout_key_for_path,
+    format_harvest_text,
     harvest_local_git,
     local_git_harvest_view,
     state_fingerprint,
 )
 from clankops.projections import dump_projection_state, rebuild_projections
 from clankops.readmodel import dossier, ledger_fingerprint
-from clankops.resume import resume_packet
+from clankops.resume import format_resume_text, resume_packet
 from clankops.store import open_store
 from clankops.terminal import _dossier_html
 
@@ -173,6 +178,7 @@ def test_first_observation_emits_state_and_run(tmp_path: Path, repo: Path) -> No
     assert event.payload.get("upstream_ahead_local") is None
     assert event.payload.get("upstream_behind_local") is None
     assert event.payload.get("upstream_freshness")
+    assert "alternate_checkouts" not in event.payload
     assert runs[0].source == EventSource.SYSTEM
     assert runs[0].mission_id is None
     assert runs[0].session_id is None
@@ -509,6 +515,235 @@ def test_windows_path_and_detached_and_missing_git(tmp_path: Path, repo: Path) -
     missing = harvest_local_git(store, "oem-radar", git_available=False)
     assert missing["results"][0]["result"] == "ERROR"
     assert missing["errors"] == 1
+    store.conn.close()
+
+
+HEAD_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+HEAD_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+
+def _ok_observe(head: str, *, branch: str = "main") -> dict:
+    return {
+        "ok": True,
+        "result_code": "OBSERVED",
+        "state": {
+            "branch": branch,
+            "detached": False,
+            "head": head,
+            "dirty": False,
+            "dirty_count": 0,
+            "tracked_changes": 0,
+            "untracked": 0,
+            "upstream": None,
+            "upstream_ahead_local": None,
+            "upstream_behind_local": None,
+            "remotes": [],
+            "worktrees": [],
+        },
+    }
+
+
+def _fail_observe(code: str, detail: str = "forced failure") -> dict:
+    return {
+        "ok": False,
+        "result_code": code,
+        "error_class": code,
+        "detail": detail,
+        "state": None,
+    }
+
+
+def test_observer_exception_isolated_and_secret_absent(tmp_path: Path, repo: Path) -> None:
+    other = _init_repo(tmp_path / "other")
+    store = open_store(tmp_path / "h.db", actor="cursor", clock=FrozenClock(T0))
+    store.register_clank("oem-radar", local_path=str(repo))
+    store.register_clank("watch-clank", local_path=str(other))
+
+    def observe(path, timeout=None):
+        if Path(path).resolve() == repo.resolve():
+            raise RuntimeError(f"inspect exploded {SECRET_TOKEN} {SECRET_PAT}")
+        return observe_local_git_checkout(path, timeout=timeout)
+
+    result = harvest_local_git(store, observe=observe)
+    by_slug = {row["slug"]: row["result"] for row in result["results"]}
+    assert by_slug["oem-radar"] == RESULT_ERROR
+    assert by_slug["watch-clank"] in {RESULT_OBSERVED_CHANGED, RESULT_OBSERVED_UNCHANGED}
+    assert result["errors"] == 1
+    assert result["observed_changed"] == 1
+    assert len(_events(store, EventType.LOCAL_GIT_STATE_OBSERVED)) == 1
+    assert len(_events(store, EventType.LOCAL_GIT_HARVEST_COMPLETED)) == 1
+    blob = _blob(
+        result,
+        format_harvest_text(result),
+        _surfaces(store, "oem-radar"),
+        _surfaces(store, "watch-clank"),
+        format_resume_text(resume_packet(store, "oem-radar", include_github=False)),
+        format_resume_text(resume_packet(store, "watch-clank", include_github=False)),
+        _dossier_html(dossier(store, "oem-radar", include_github=False)),
+        _dossier_html(dossier(store, "watch-clank", include_github=False)),
+    )
+    _assert_no_secrets(blob)
+    store.conn.close()
+
+
+class _ProcessWide(BaseException):
+    pass
+
+
+def test_observer_baseexception_is_not_swallowed(tmp_path: Path, repo: Path) -> None:
+    store = open_store(tmp_path / "h.db", actor="cursor", clock=FrozenClock(T0))
+    _seed(store, path=str(repo))
+
+    def observe(path, timeout=None):
+        raise _ProcessWide("process-wide abort")
+
+    with pytest.raises(_ProcessWide):
+        harvest_local_git(store, "oem-radar", observe=observe)
+    assert _events(store, EventType.LOCAL_GIT_HARVEST_COMPLETED) == []
+    store.conn.close()
+
+
+def test_concurrent_stale_writer_does_not_replace_newer_state(tmp_path: Path, repo: Path) -> None:
+    db = tmp_path / "stale.db"
+    setup = open_store(db, actor="cursor", clock=FrozenClock(T0))
+    _seed(setup, path=str(repo))
+    setup.conn.close()
+    a_inspecting = threading.Event()
+    b_committed = threading.Event()
+    lock = threading.Lock()
+    errors: list[BaseException] = []
+    outcomes: dict[str, dict] = {}
+
+    def observe_a(path, timeout=None):
+        a_inspecting.set()
+        assert b_committed.wait(timeout=15)
+        return _ok_observe(HEAD_A)
+
+    def observe_b(path, timeout=None):
+        assert a_inspecting.wait(timeout=15)
+        return _ok_observe(HEAD_B)
+
+    def worker(name: str, observe) -> None:
+        store = open_store(db, actor="cursor")
+        try:
+            result = harvest_local_git(store, "oem-radar", observe=observe)
+            with lock:
+                outcomes[name] = result
+            if name == "b":
+                b_committed.set()
+        except BaseException as exc:  # noqa: BLE001 — collect for assertion
+            with lock:
+                errors.append(exc)
+            b_committed.set()
+        finally:
+            store.conn.close()
+
+    thread_a = threading.Thread(target=worker, args=("a", observe_a))
+    thread_b = threading.Thread(target=worker, args=("b", observe_b))
+    thread_a.start()
+    thread_b.start()
+    for thread in (thread_a, thread_b):
+        thread.join(timeout=30)
+        assert not thread.is_alive()
+    assert errors == []
+    assert outcomes["b"]["observed_changed"] == 1
+    assert outcomes["a"]["errors"] == 1
+    assert outcomes["a"]["results"][0]["result"] == RESULT_ERROR
+    store = open_store(db, actor="cursor")
+    observed = _events(store, EventType.LOCAL_GIT_STATE_OBSERVED)
+    runs = _events(store, EventType.LOCAL_GIT_HARVEST_COMPLETED)
+    assert len(observed) == 1
+    assert observed[0].payload["head"] == HEAD_B
+    assert local_git_harvest_view(store, "oem-radar")["semantic_state"]["head"] == HEAD_B
+    assert len(runs) == 2
+    seqs = [event.ledger_seq for event in list_events(store.conn)]
+    assert len(seqs) == len(set(seqs))
+    store.conn.close()
+
+
+def test_resume_fingerprint_notices_failed_evidence(tmp_path: Path, repo: Path) -> None:
+    store = open_store(
+        tmp_path / "h.db",
+        actor="cursor",
+        clock=TickingClock(T0, timedelta(hours=1)),
+    )
+    _seed(store, path=str(repo))
+
+    def success(path, timeout=None):
+        return _ok_observe(HEAD_A)
+
+    harvest_local_git(store, "oem-radar", observe=success)
+    first = resume_packet(store, "oem-radar", include_github=False)
+    harvest_local_git(store, "oem-radar", observe=success)
+    second = resume_packet(store, "oem-radar", include_github=False)
+    assert first["context_fingerprint"] == second["context_fingerprint"]
+    assert first["local_git_harvest"]["latest_failure"] is None
+
+    def timed_out(path, timeout=None):
+        return _fail_observe(RESULT_TIMEOUT, "git timed out")
+
+    harvest_local_git(store, "oem-radar", observe=timed_out)
+    timeout_packet = resume_packet(store, "oem-radar", include_github=False)
+    assert timeout_packet["context_fingerprint"] != second["context_fingerprint"]
+    assert timeout_packet["local_git_harvest"]["latest_failure"] == RESULT_TIMEOUT
+    harvest_local_git(store, "oem-radar", observe=timed_out)
+    timeout_again = resume_packet(store, "oem-radar", include_github=False)
+    assert timeout_again["context_fingerprint"] == timeout_packet["context_fingerprint"]
+
+    previous = timeout_again["context_fingerprint"]
+    for code in (RESULT_ERROR, RESULT_PATH_MISSING, RESULT_NOT_A_GIT_REPOSITORY):
+        def fail(path, timeout=None, result_code=code):
+            return _fail_observe(result_code)
+
+        harvest_local_git(store, "oem-radar", observe=fail)
+        packet = resume_packet(store, "oem-radar", include_github=False)
+        assert packet["local_git_harvest"]["latest_failure"] == code
+        assert packet["context_fingerprint"] != previous
+        harvest_local_git(store, "oem-radar", observe=fail)
+        again = resume_packet(store, "oem-radar", include_github=False)
+        assert again["context_fingerprint"] == packet["context_fingerprint"]
+        previous = packet["context_fingerprint"]
+    store.conn.close()
+
+
+def test_noncanonical_ref_does_not_emit_local_git_observation(tmp_path: Path, repo: Path) -> None:
+    store = open_store(tmp_path / "h.db", actor="cursor", clock=FrozenClock(T0))
+    _seed(store, path=str(repo))
+    first = harvest_local_git(store, "oem-radar")
+    assert first["observed_changed"] == 1
+    assert len(_events(store, EventType.LOCAL_GIT_STATE_OBSERVED)) == 1
+    store.update_ref("oem-radar", "local_path", str(tmp_path / "dup"), canonical=False)
+    second = harvest_local_git(store, "oem-radar")
+    assert second["observed_unchanged"] == 1
+    assert len(_events(store, EventType.LOCAL_GIT_STATE_OBSERVED)) == 1
+    event = _events(store, EventType.LOCAL_GIT_STATE_OBSERVED)[0]
+    assert "alternate_checkouts" not in event.payload
+    assert second["results"][0]["alternate_checkouts"]
+    view = local_git_harvest_view(store, "oem-radar")
+    assert view["alternate_checkouts"]
+    assert "alternate_checkouts" not in (view.get("semantic_state") or {})
+    store.conn.close()
+
+
+def test_terminal_source_unknown_without_observation(tmp_path: Path, repo: Path) -> None:
+    store = open_store(tmp_path / "h.db", actor="cursor", clock=FrozenClock(T0))
+    _seed(store, path=str(repo))
+    view = local_git_harvest_view(store, "oem-radar")
+    assert view["source"] is None
+    assert view["never_harvested"] is True
+    html = _dossier_html(dossier(store, "oem-radar", include_github=False))
+    assert "<th>source</th><td>" in html
+    assert "[UNKNOWN]" in html
+    packet = resume_packet(store, "oem-radar", include_github=False)
+    assert packet["local_git_harvest"]["source"] is None
+    assert "never harvested" in format_resume_text(packet)
+    harvest_local_git(store, "oem-radar")
+    observed = local_git_harvest_view(store, "oem-radar")
+    assert observed["source"] == EventSource.LOCAL_GIT
+    html_observed = _dossier_html(dossier(store, "oem-radar", include_github=False))
+    assert "[LOCAL_GIT]" in html_observed
+    text = format_resume_text(resume_packet(store, "oem-radar", include_github=False))
+    assert "source=LOCAL_GIT" in text
     store.conn.close()
 
 

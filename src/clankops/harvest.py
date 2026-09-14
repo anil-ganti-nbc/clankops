@@ -21,6 +21,7 @@ from clankops.gitinspect import (
     RESULT_OBSERVED,
     RESULT_PATH_MISSING,
     RESULT_TIMEOUT,
+    _bounded_detail,
     git_executable_available,
     observe_local_git_checkout,
 )
@@ -45,6 +46,20 @@ HARD_ERRORS = frozenset(
 )
 UNAVAILABLE = frozenset({RESULT_PATH_MISSING, RESULT_NOT_A_GIT_REPOSITORY})
 SKIPPED = frozenset({RESULT_NO_CANONICAL_PATH})
+FAILURE_EVIDENCE = frozenset(
+    {
+        RESULT_TIMEOUT,
+        RESULT_ERROR,
+        RESULT_PATH_MISSING,
+        RESULT_NOT_A_GIT_REPOSITORY,
+        RESULT_AMBIGUOUS_CANONICAL_PATH,
+        "GIT_MISSING",
+        "STALE_OBSERVATION",
+    }
+)
+WRITE_CHANGED = "changed"
+WRITE_UNCHANGED = "unchanged"
+WRITE_STALE = "stale"
 
 ObserveFn = Callable[..., dict[str, Any]]
 
@@ -99,7 +114,6 @@ def semantic_state_payload(
     checkout_key: str,
     checkout_path: str,
     observed: dict[str, Any],
-    alternate_checkouts: list[dict[str, Any]],
 ) -> dict[str, Any]:
     remotes = sorted(
         list(observed.get("remotes") or []),
@@ -122,7 +136,6 @@ def semantic_state_payload(
         "upstream_behind_local": observed.get("upstream_behind_local"),
         "remotes": remotes,
         "worktrees": worktrees,
-        "alternate_checkouts": alternate_checkouts,
         "upstream_freshness": "against local tracking ref; remote freshness unknown",
     }
 
@@ -206,6 +219,12 @@ def _classify_target(detail: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _observation_generation(row: dict[str, Any] | None) -> int:
+    if not row:
+        return 0
+    return int(row.get("ledger_seq") or 0)
+
+
 def _record_state_observation(
     store: Store,
     *,
@@ -213,16 +232,21 @@ def _record_state_observation(
     payload: dict[str, Any],
     fingerprint: str,
     observed_at: str,
-) -> tuple[bool, Any]:
-    """Inspect already done. Lock, re-read fingerprint, maybe append."""
+    expected_generation: int,
+) -> tuple[str, Any]:
+    """Lock, re-read generation/fingerprint, maybe append. Never write stale state."""
     clank_id = payload["clank_id"]
     checkout_key = payload["checkout_key"]
     store._begin_immediate()
     try:
         latest = _latest_observation(store, clank_id, checkout_key)
+        generation = _observation_generation(latest)
         if latest and latest.get("state_fingerprint") == fingerprint:
             store.commit()
-            return False, None
+            return WRITE_UNCHANGED, None
+        if generation != expected_generation:
+            store.commit()
+            return WRITE_STALE, None
         observation_id = new_id()
         event = store._emit(
             EventType.LOCAL_GIT_STATE_OBSERVED,
@@ -241,7 +265,7 @@ def _record_state_observation(
             bind_session=False,
         )
         store.commit()
-        return True, event
+        return WRITE_CHANGED, event
     except Exception:
         store.conn.rollback()
         raise
@@ -305,25 +329,36 @@ def harvest_local_git(
             errors += 1
             results.append(row)
             continue
-        observed = observe_fn(classified["checkout_path"], timeout=timeout)
-        if not observed.get("ok"):
-            code = str(observed.get("result_code") or RESULT_ERROR)
-            row["result"] = code
-            row["detail"] = observed.get("detail")
-            if code in UNAVAILABLE:
-                unavailable += 1
-            else:
-                errors += 1
+        expected_generation = _observation_generation(
+            _latest_observation(store, classified["clank_id"], classified["checkout_key"])
+        )
+        if store.conn.in_transaction:
+            store.conn.commit()
+        try:
+            observed = observe_fn(classified["checkout_path"], timeout=timeout)
+            if not observed.get("ok"):
+                code = str(observed.get("result_code") or RESULT_ERROR)
+                row["result"] = code
+                row["detail"] = observed.get("detail")
+                if code in UNAVAILABLE:
+                    unavailable += 1
+                else:
+                    errors += 1
+                results.append(row)
+                continue
+            semantic = semantic_state_payload(
+                clank_id=classified["clank_id"],
+                checkout_key=classified["checkout_key"],
+                checkout_path=_normalize_checkout_path(classified["checkout_path"]),
+                observed=observed["state"],
+            )
+            fingerprint = state_fingerprint(semantic)
+        except Exception as exc:
+            row["result"] = RESULT_ERROR
+            row["detail"] = _bounded_detail(f"{exc.__class__.__name__}: {exc}")
+            errors += 1
             results.append(row)
             continue
-        semantic = semantic_state_payload(
-            clank_id=classified["clank_id"],
-            checkout_key=classified["checkout_key"],
-            checkout_path=_normalize_checkout_path(classified["checkout_path"]),
-            observed=observed["state"],
-            alternate_checkouts=classified["alternate_checkouts"],
-        )
-        fingerprint = state_fingerprint(semantic)
         row["state"] = semantic
         row["state_fingerprint"] = fingerprint
         observed_at = isoformat_utc(store.clock.now())
@@ -333,19 +368,26 @@ def harvest_local_git(
             row["changed"] = would_change
             row["result"] = RESULT_OBSERVED_CHANGED if would_change else RESULT_OBSERVED_UNCHANGED
         else:
-            did_change, event = _record_state_observation(
+            outcome, event = _record_state_observation(
                 store,
                 actor=observer,
                 payload=semantic,
                 fingerprint=fingerprint,
                 observed_at=observed_at,
+                expected_generation=expected_generation,
             )
-            row["changed"] = did_change
-            row["result"] = RESULT_OBSERVED_CHANGED if did_change else RESULT_OBSERVED_UNCHANGED
+            if outcome == WRITE_STALE:
+                row["result"] = RESULT_ERROR
+                row["detail"] = "stale local git observation discarded"
+                errors += 1
+                results.append(row)
+                continue
+            row["changed"] = outcome == WRITE_CHANGED
+            row["result"] = RESULT_OBSERVED_CHANGED if row["changed"] else RESULT_OBSERVED_UNCHANGED
             if event is not None:
                 row["observation_event_id"] = event.event_id
                 row["observation_ledger_seq"] = event.ledger_seq
-            elif not did_change:
+            elif outcome == WRITE_UNCHANGED:
                 latest = _latest_observation(
                     store, classified["clank_id"], classified["checkout_key"]
                 )
@@ -549,8 +591,14 @@ def local_git_harvest_view(
 
 
 def local_git_harvest_facts(view: dict[str, Any]) -> dict[str, Any]:
-    """Resume-packet facts. Temporal/display fields stay named for fingerprint skip."""
+    """Resume-packet facts. Successful unchanged freshness is ephemeral.
+
+    Failed/unavailable harvest outcomes are evidence and are hashed as
+    `latest_failure`. Repeated identical failure class need not churn.
+    """
     state = view.get("semantic_state")
+    result = view.get("latest_result")
+    failure = result if result in FAILURE_EVIDENCE else None
     return {
         "checkout_key": view.get("checkout_key"),
         "checkout_path": view.get("checkout_path"),
@@ -565,7 +613,9 @@ def local_git_harvest_facts(view: dict[str, Any]) -> dict[str, Any]:
         "last_checked_at": view.get("last_checked_at"),
         "check_age": view.get("check_age"),
         "check_age_seconds": view.get("check_age_seconds"),
-        "latest_result": view.get("latest_result"),
+        "latest_result": result,
+        "latest_failure": failure,
+        "latest_result_detail": view.get("latest_result_detail"),
         "harvest_run_id": view.get("harvest_run_id"),
         "alternate_checkouts": view.get("alternate_checkouts") or [],
     }

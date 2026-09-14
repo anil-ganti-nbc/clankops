@@ -114,7 +114,7 @@ def _local_git_harvest_html(view: dict[str, Any]) -> str:
   <tr><th>checkout</th><td>{html.escape(_unknown(view.get('checkout_path')))}</td></tr>
   {last_state_note}
   <tr><th>worktrees</th><td>{html.escape(str(len(worktrees)))}</td></tr>
-  <tr><th>source</th><td>{_mark(str(view.get('source') or 'LOCAL_GIT'))}</td></tr>
+  <tr><th>source</th><td>{_mark(str(view.get('source') or 'UNKNOWN'))}</td></tr>
 </table>
 """
 

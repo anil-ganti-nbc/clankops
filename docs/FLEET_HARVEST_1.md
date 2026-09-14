@@ -53,17 +53,21 @@ Two event kinds:
 The fingerprint excludes observation time, event id, actor, run id, and
 display age. It includes checkout identity, branch/detached, HEAD,
 clean/dirty, counts, local upstream ahead/behind, safe remote
-identities, worktree inventory, and registered alternate checkouts.
+identities, and worktree inventory. Registered alternate checkouts are
+ClankOps registry/ref facts, not Git-observed facts, and are not part
+of `LOCAL_GIT_STATE_OBSERVED` or its semantic fingerprint.
 
 ## Why identical state is deduplicated
 
 The ledger is institutional memory, not a debug logfile. An hourly walk
 of 18 unchanged repositories must not mint 18 duplicate state events.
 
-Identical concurrent harvesters inspect **without** a SQLite write lock,
-then `BEGIN IMMEDIATE`, re-read the latest fingerprint, and append at
-most one new semantic observation for that fingerprint. Each invocation
-still gets its own harvest-run record.
+Harvesters record the latest observation generation, inspect **without**
+a SQLite write lock, then `BEGIN IMMEDIATE` and re-read generation plus
+fingerprint. Identical fingerprints dedup. If a newer observation landed
+while inspection was running, the stale write is discarded — it never
+becomes current by later `ledger_seq`. Each invocation still gets its
+own harvest-run record.
 
 ## Harvest-run evidence
 
@@ -107,8 +111,15 @@ inspects exactly one. Arbitrary filesystem paths are not accepted.
   (fail closed; never guess)
 
 Noncanonical `local_path` refs may be listed as alternate/duplicate
-checkouts. They are not harvested by default. Identities are never
-merged because two paths or remotes look similar.
+checkouts on harvest **results** and the Clank/ref read model. They are
+not harvested by default and are not Git-observed LOCAL_GIT facts.
+Changing only a noncanonical `local_path` must not emit
+`LOCAL_GIT_STATE_OBSERVED`. Identities are never merged because two
+paths or remotes look similar.
+
+Without a semantic LOCAL_GIT observation, Terminal/resume source is
+UNKNOWN — never a default of `LOCAL_GIT`. A successful semantic
+observation uses `source=LOCAL_GIT`.
 
 ## Duplicate checkout treatment
 
@@ -136,7 +147,9 @@ worktree's dirty state.
 ## Failure isolation
 
 One broken checkout does not abort the fleet walk. Every target is
-processed, then a summary is produced.
+processed, then a summary is produced. An ordinary `Exception` from
+`observe_fn()` is recorded as a bounded/redacted `ERROR` for that
+target; process-wide `BaseException` classes are not swallowed.
 
 | Result | Meaning |
 | --- | --- |
@@ -164,10 +177,18 @@ Use dry-run before the first real fleet dogfood.
 
 ## Resume fingerprint behaviour
 
-The resume packet exposes `local_git_harvest`. Identical semantic state
-must not churn `context_fingerprint` even when `last_checked_at`, age,
-run id, or latest result (`OBSERVED_UNCHANGED`) change. A real HEAD,
-branch, dirty, count, remote-identity, or worktree change must.
+The resume packet exposes `local_git_harvest`. Identical successful
+semantic state must not churn `context_fingerprint` even when
+`last_checked_at`, age, run id, or latest result (`OBSERVED_UNCHANGED`)
+change. A real HEAD, branch, dirty, count, remote-identity, or worktree
+change must.
+
+A new failure/unavailability outcome is evidence. Successful state X
+then `TIMEOUT` / `ERROR` / `PATH_MISSING` / `NOT_A_GIT_REPOSITORY`
+changes `context_fingerprint`. Repeated identical failure class with no
+other semantic change need not churn. Failure class is hashed as
+`latest_failure`; timestamps and successful unchanged freshness stay
+ephemeral.
 
 ## Non-conflation laws
 
