@@ -254,10 +254,10 @@ Reconciliation is one reserved write:
 6. project
 7. commit
 
-Any failure rolls back. Never reconcile around a live Session. A
-concurrent resume that wins the lock leaves the Mission `ACTIVE` with
-its Session; reconciliation then fails and emits nothing. A
-reconciliation that wins leaves `COMPLETED` with no open Session.
+Any failure rolls back. Never reconcile around a live Session. Ordinary
+`transition_mission` / `resume_mission` take the same reserved write lock
+and re-read Mission state under it, so a concurrent resume cannot overwrite
+a just-reconciled `COMPLETED` or leave `COMPLETED` with an open Session.
 
 ## Attention
 

@@ -82,14 +82,23 @@ def event_from_row(row: sqlite3.Row) -> Event:
 
 
 def allocate_ledger_seq(conn: sqlite3.Connection) -> int:
-    """Monotonic seq assigned by this ledger at append time."""
-    row = conn.execute("SELECT next_seq FROM ledger_head WHERE id = 1").fetchone()
+    """Monotonic seq assigned by this ledger at append time.
+
+    The increment is a single UPDATE so two writers cannot mint the same
+    `ledger_seq`. SELECT-then-UPDATE races under concurrent append.
+    """
+    row = conn.execute(
+        """
+        UPDATE ledger_head
+        SET next_seq = next_seq + 1
+        WHERE id = 1
+        RETURNING next_seq
+        """
+    ).fetchone()
     if row is None:
         conn.execute("INSERT INTO ledger_head(id, next_seq) VALUES (1, 2)")
         return 1
-    seq = int(row[0])
-    conn.execute("UPDATE ledger_head SET next_seq = ? WHERE id = 1", (seq + 1,))
-    return seq
+    return int(row[0]) - 1
 
 
 def reseed_ledger_head(conn: sqlite3.Connection) -> int:
