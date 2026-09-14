@@ -1228,8 +1228,6 @@ def cmd_terminal(args: argparse.Namespace) -> int:
     from clankops.timefmt import parse_duration
 
     host = args.host or DEFAULT_HOST
-    if host not in {"127.0.0.1", "localhost", "::1"}:
-        raise ValidationError("Terminal alpha binds localhost only")
     census_path = Path(args.census) if args.census else default_census_path()
     httpd = serve(
         db_path=args.db,
@@ -1237,6 +1235,7 @@ def cmd_terminal(args: argparse.Namespace) -> int:
         port=args.port,
         census_path=census_path,
         stale_after=parse_duration(args.stale_after),
+        allow_remote=bool(getattr(args, "allow_remote", False)),
     )
     bound = httpd.server_address
     display_host = f"[{bound[0]}]" if ":" in str(bound[0]) else bound[0]
@@ -1550,8 +1549,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(func=cmd_harvest_local_git)
 
-    p = sub.add_parser("terminal", help="read-only localhost Clank Terminal (alpha)")
+    p = sub.add_parser("terminal", help="read-only localhost Clank Terminal (beta)")
     p.add_argument("--host", default="127.0.0.1")
+    p.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help="required to bind a non-loopback interface; still no authentication",
+    )
     p.add_argument("--port", type=int, default=8765)
     p.add_argument(
         "--census",

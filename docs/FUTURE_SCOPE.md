@@ -7,10 +7,13 @@ scope.
 
 ## Terminal / UI
 
-- Bloomberg-style operator terminal (the original ClankOpsDashboard placeholder)
-- Mission/checkpoint timeline views
-- Keyboard-first brief pane
-- Local web UI for read-only browsing of projections
+- Bloomberg-style operator terminal — **Terminal Beta** implements the
+  read-only Fleet Command Centre (`clankctl terminal`): snapshot-default
+  fleet grid, dossier evidence matrix, attention/sessions views, bounded
+  filter grammar, keyboard contract. It still does not mutate the ledger,
+  run Harvest, or contact GitHub unless explicitly asked (`?github=1`).
+- Full Clank query language / semantic search — deferred
+- Mutation / control UI — deferred; not part of Terminal Beta
 
 ## Git / GitHub ingestion
 

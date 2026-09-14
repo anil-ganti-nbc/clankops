@@ -1,122 +1,87 @@
-"""Read-only Clank Terminal (Foundation 3 alpha).
+"""Read-only Clank Terminal Beta (Fleet Command Centre).
 
-Localhost HTML/JSON over projection tables. No mutations, no scheduler,
-no remote bind by default.
-
-Connection ownership: ThreadingHTTPServer is kept so the listen loop is
-not blocked by a slow request, but **each request opens its own
-read-only SQLite connection/Store and closes it before the handler
-returns**. Worker threads never share a sqlite3 connection. SQLite's
-thread check stays enabled.
+Presents evidence. Does not create authority. Browser GET/HEAD only.
+Each HTTP worker opens its own read-only Store and closes it before return.
 """
 
 from __future__ import annotations
 
-import html
 import json
 from datetime import timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
-from clankops.brief import format_brief
+from clankops.attention import CLASS_INTEGRITY, attention_report
 from clankops.census import load_census
-from clankops.clock import Clock
+from clankops.ci import CI_ARTIFACT_KIND
+from clankops.clock import Clock, isoformat_utc
 from clankops.errors import NotFoundError, ValidationError
+from clankops.harvest import local_git_harvest_view
 from clankops.readmodel import (
     DEFAULT_STALE,
     coverage_report,
     dossier,
     fleet_home,
+    ledger_fingerprint,
+    list_sessions,
     open_sessions,
     stale_sessions,
 )
 from clankops.reconcile import reconcile_clank, reconcile_fleet
 from clankops.store import Store, open_readonly_store
-from clankops.timefmt import parse_duration
+from clankops.terminal_query import QueryError, apply_filters, parse_filter
+from clankops.terminal_views import (
+    attention_html,
+    dossier_html,
+    fleet_html,
+    mode_label,
+    session_dossier_html as _session_dossier_html,
+    sessions_html,
+)
+from clankops.timefmt import format_age, parse_duration, parse_utc
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_STALE_LABEL = "24h"
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+TIMELINE_DEFAULT = 200
+TIMELINE_MAX = 1000
+SECURITY_HEADERS = (
+    ("Cache-Control", "no-store"),
+    ("X-Content-Type-Options", "nosniff"),
+    ("Referrer-Policy", "no-referrer"),
+    (
+        "Content-Security-Policy",
+        "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+        "img-src 'none'; connect-src 'self'; base-uri 'none'; form-action 'self'",
+    ),
+    ("X-ClankOps-Mode", "read-only"),
+)
+
+
+def snapshot_inspect_local(_path: str) -> dict[str, Any]:
+    """Do not inspect the working tree. Snapshot pages must not run git."""
+    return {
+        "is_git": False,
+        "git_error": "snapshot: live local not requested",
+        "current_branch": None,
+        "head": None,
+        "dirty": None,
+        "dirty_count": 0,
+        "ahead": None,
+        "behind": None,
+        "upstream": None,
+    }
 
 
 def _json(payload: Any) -> bytes:
     return (json.dumps(payload, indent=2, ensure_ascii=False, default=str) + "\n").encode(
         "utf-8"
     )
-
-
-def _unknown(value: Any) -> str:
-    if value is None or value == "":
-        return "unknown"
-    return str(value)
-
-
-def _mark(label: str) -> str:
-    return f"<span class=\"mark\">[{html.escape(label)}]</span>"
-
-
-def _local_git_harvest_html(view: dict[str, Any]) -> str:
-    latest = str(view.get("latest_result") or "")
-    css = "harvest-unknown"
-    status = "NONE"
-    if view.get("semantic_state"):
-        css = "harvest-observed"
-        status = "OBSERVED"
-    if latest in {"TIMEOUT"}:
-        css = "harvest-timeout"
-        status = "TIMEOUT"
-    elif latest in {"ERROR", "AMBIGUOUS_CANONICAL_PATH", "STALE_OBSERVATION"}:
-        css = "harvest-error"
-        status = latest
-    elif latest in {"PATH_MISSING", "NOT_A_GIT_REPOSITORY"}:
-        css = "harvest-error"
-        status = latest
-    elif latest in {"OBSERVED_CHANGED", "OBSERVED_UNCHANGED"}:
-        css = "harvest-observed"
-        status = "OBSERVED"
-    state = view.get("semantic_state") or {}
-    head = (state.get("head") or "")[:12] or "unknown"
-    branch = state.get("branch") or ("HEAD" if state.get("detached") else "unknown")
-    if state.get("dirty"):
-        tree = f"DIRTY ({state.get('dirty_count') or 0} paths)"
-    elif state.get("dirty") is False:
-        tree = "CLEAN"
-    else:
-        tree = "unknown"
-    worktrees = state.get("worktrees") or []
-    last_state_note = ""
-    if latest in {"TIMEOUT", "ERROR", "PATH_MISSING", "NOT_A_GIT_REPOSITORY", "STALE_OBSERVATION"} and state:
-        last_state_note = (
-            f"<tr><th>last state</th><td>{html.escape(str(branch))} / "
-            f"{html.escape(str(head))} / {html.escape(tree)}</td></tr>"
-            f"<tr><th>latest check</th><td class=\"{css}\">{_mark(status)} "
-            f"{html.escape(view.get('latest_result_detail') or latest)}</td></tr>"
-            f"<tr><th>state observation age</th><td>{html.escape(_unknown(view.get('state_observation_age')))}</td></tr>"
-        )
-    elif view.get("never_harvested"):
-        last_state_note = "<tr><th>harvest</th><td>never harvested</td></tr>"
-    else:
-        last_state_note = (
-            f"<tr><th>branch</th><td>{html.escape(str(branch))}</td></tr>"
-            f"<tr><th>HEAD</th><td>{html.escape(str(head))}</td></tr>"
-            f"<tr><th>working tree</th><td>{_mark(tree.split()[0] if tree else 'UNKNOWN')} {html.escape(tree)}</td></tr>"
-            f"<tr><th>observed state</th><td>{html.escape(_unknown(view.get('state_observation_age')))} ago</td></tr>"
-            f"<tr><th>last checked</th><td>{html.escape(_unknown(view.get('check_age')))} ago</td></tr>"
-        )
-    return f"""
-<h2>LOCAL GIT</h2>
-<p class="muted">Harvested local checkout facts. This is not GitHub, CI, deployment, Mission completion, or health.</p>
-<table>
-  <tr><th>status</th><td class="{css}">{_mark(status)}</td></tr>
-  <tr><th>checkout</th><td>{html.escape(_unknown(view.get('checkout_path')))}</td></tr>
-  {last_state_note}
-  <tr><th>worktrees</th><td>{html.escape(str(len(worktrees)))}</td></tr>
-  <tr><th>source</th><td>{_mark(str(view.get('source') or 'UNKNOWN'))}</td></tr>
-</table>
-"""
 
 
 def _load_census(census: dict[str, Any] | None, census_path: str | Path | None) -> dict[str, Any] | None:
@@ -128,6 +93,188 @@ def _load_census(census: dict[str, Any] | None, census_path: str | Path | None) 
     if not path.is_file():
         return None
     return load_census(path)
+
+
+def _flag(query: dict[str, list[str]], name: str) -> bool:
+    raw = (query.get(name) or [None])[0]
+    return str(raw or "").strip().lower() in {"1", "true", "yes"}
+
+
+def _timeline_limit(query: dict[str, list[str]]) -> int:
+    raw = (query.get("limit") or [str(TIMELINE_DEFAULT)])[0]
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return TIMELINE_DEFAULT
+    return max(1, min(value, TIMELINE_MAX))
+
+
+def _snapshot(store: Store, now) -> dict[str, Any]:
+    fp = ledger_fingerprint(store)
+    instant = now or store.clock.now()
+    return {
+        "generated_at": isoformat_utc(instant),
+        "ledger_event_count": fp["event_count"],
+        "max_ledger_seq": fp["max_ledger_seq"],
+        "consistency": "read-time; not a transactionally frozen multi-page snapshot",
+    }
+
+
+def _mode(live_local: bool, github: bool) -> dict[str, Any]:
+    return {
+        "live_local": live_local,
+        "github": github,
+        "label": mode_label(live_local=live_local, github=github),
+    }
+
+
+def _inspect_local(live_local: bool):
+    return None if live_local else snapshot_inspect_local
+
+
+def _decorate_rows(store: Store, home: dict[str, Any], *, now) -> dict[str, Any]:
+    items = (home.get("attention") or {}).get("items") or []
+    by_clank: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        by_clank.setdefault(item.get("clank"), []).append(item)
+    tasks: dict[str, list[str]] = {}
+    for row in store.conn.execute("SELECT clank_id, title FROM tasks"):
+        tasks.setdefault(row["clank_id"], []).append(row["title"] or "")
+    features: dict[str, list[str]] = {}
+    for row in store.conn.execute("SELECT clank_id, name FROM features"):
+        features.setdefault(row["clank_id"], []).append(row["name"] or "")
+    decisions: dict[str, list[str]] = {}
+    for row in store.conn.execute("SELECT clank_id, statement FROM decisions"):
+        decisions.setdefault(row["clank_id"], []).append(row["statement"] or "")
+    ci_by_mission: dict[str, dict[str, Any]] = {}
+    for row in store.conn.execute(
+        "SELECT mission_id, ref, title, metadata_json FROM artifacts WHERE kind = ? ORDER BY created_utc DESC",
+        (CI_ARTIFACT_KIND,),
+    ):
+        if row["mission_id"] not in ci_by_mission:
+            meta = {}
+            raw = row["metadata_json"]
+            if raw:
+                try:
+                    meta = json.loads(raw) if isinstance(raw, str) else dict(raw)
+                except json.JSONDecodeError:
+                    meta = {}
+            ci_by_mission[row["mission_id"]] = {
+                "ref": row["ref"],
+                "title": row["title"],
+                "state": (meta.get("state") if isinstance(meta, dict) else None) or row["title"],
+                "sha": (meta.get("sha") if isinstance(meta, dict) else None),
+            }
+    deploy_counts: dict[str, int] = {}
+    deploy_total = 0
+    from clankops.deployment import current_deployments
+
+    for clank in store.list_clanks():
+        surfaces = current_deployments(store, clank["clank_id"])
+        deploy_counts[clank["slug"]] = len(surfaces)
+        deploy_total += len(surfaces)
+    harvest_observed = 0
+    harvest_never = 0
+    harvest_failed = 0
+    integrity = 0
+    for row in home.get("rows") or []:
+        view = local_git_harvest_view(store, row["slug"], now=now)
+        row["harvest"] = view
+        row["harvest_result"] = view.get("latest_result")
+        row["harvest_never"] = bool(view.get("never_harvested"))
+        state = view.get("semantic_state") or {}
+        row["harvest_dirty"] = state.get("dirty")
+        if view.get("never_harvested"):
+            harvest_never += 1
+        elif view.get("latest_result") in {"OBSERVED_CHANGED", "OBSERVED_UNCHANGED"}:
+            harvest_observed += 1
+        elif view.get("latest_result"):
+            harvest_failed += 1
+        clank_items = by_clank.get(row["slug"]) or []
+        row["attention_count"] = len(clank_items)
+        row["attention_classes"] = sorted({item.get("class") for item in clank_items if item.get("class")})
+        row["attention_top"] = clank_items[0] if clank_items else {}
+        integrity += sum(1 for item in clank_items if item.get("class") == CLASS_INTEGRITY)
+        sessions = []
+        for item in home.get("open_sessions") or []:
+            if item.get("clank_id") == row.get("clank_id"):
+                sessions.append(item)
+        process = (sessions[0].get("managed_process") if sessions else {}) or {}
+        row["process_status"] = process.get("status") or "UNKNOWN"
+        if sessions:
+            row["handoff"] = process.get("handoff") or sessions[0].get("handoff") or "MISSING"
+        else:
+            row["handoff"] = "UNKNOWN"
+        row["task_titles"] = tasks.get(row["clank_id"], [])
+        row["feature_names"] = features.get(row["clank_id"], [])
+        row["decision_statements"] = decisions.get(row["clank_id"], [])
+        mission_display = row.get("mission_display")
+        ci = None
+        if mission_display:
+            mission_row = None
+            try:
+                mission_row = store.resolve_mission(mission_display)
+            except Exception:
+                mission_row = None
+            if mission_row:
+                ci = ci_by_mission.get(mission_row["mission_id"])
+        row["ci_summary"] = (ci or {}).get("state") or "none"
+        row["ci"] = ci
+        row["deployment_count"] = deploy_counts.get(row["slug"], 0)
+        recorded = parse_utc(row.get("latest_checkpoint_utc"))
+        instant = now or store.clock.now()
+        row["checkpoint_age"] = format_age((instant - recorded) if recorded else None)
+        last = store.conn.execute(
+            "SELECT ledger_seq FROM events WHERE clank_id = ? ORDER BY ledger_seq DESC LIMIT 1",
+            (row["clank_id"],),
+        ).fetchone()
+        row["last_event_seq"] = last["ledger_seq"] if last else None
+    summary = home.setdefault("summary", {})
+    summary["harvest_observed"] = harvest_observed
+    summary["harvest_never"] = harvest_never
+    summary["harvest_failed"] = harvest_failed
+    summary["attention_count"] = len(items)
+    summary["attention_integrity"] = integrity
+    summary["deployment_surfaces"] = deploy_total
+    summary["ci_missions"] = len(ci_by_mission)
+    summary.setdefault("planned_missions", 0)
+    return home
+
+
+def _command_centre(
+    store: Store,
+    *,
+    census: dict[str, Any] | None,
+    now,
+    stale_after: timedelta,
+    live_local: bool,
+    github: bool,
+    threshold_label: str | None,
+    threshold_source: str | None,
+    query_text: str,
+) -> tuple[dict[str, Any], str | None]:
+    home = fleet_home(
+        store,
+        census=census,
+        now=now,
+        stale_after=stale_after,
+        include_github=github,
+        inspect_local=_inspect_local(live_local),
+        threshold_label=threshold_label,
+        threshold_source=threshold_source,
+    )
+    home = _decorate_rows(store, home, now=now)
+    home["snapshot"] = _snapshot(store, now)
+    home["mode"] = _mode(live_local, github)
+    error = None
+    if query_text.strip():
+        try:
+            parsed = parse_filter(query_text)
+            home["rows"] = apply_filters(home.get("rows") or [], parsed)
+        except QueryError as exc:
+            error = str(exc)
+            home["rows"] = []
+    return home, error
 
 
 def dispatch(
@@ -157,30 +304,104 @@ def dispatch(
             return HTTPStatus.BAD_REQUEST, "text/plain; charset=utf-8", f"{exc}\n".encode("utf-8")
         threshold_label = raw
         threshold_source = "operator-supplied"
-    github_raw = (query.get("github") or [None])[0]
+    live_local = _flag(query, "live")
+    github = _flag(query, "github")
+    q = (query.get("q") or [""])[0]
     try:
         if route in {"/", "/fleet"}:
-            home = fleet_home(
+            home, error = _command_centre(
                 store,
                 census=census,
                 now=now,
                 stale_after=older,
-                include_github=github_raw in {"1", "true", "yes"},
+                live_local=live_local,
+                github=github,
                 threshold_label=threshold_label,
                 threshold_source=threshold_source,
+                query_text=q,
             )
-            return HTTPStatus.OK, "text/html; charset=utf-8", _fleet_html(home).encode("utf-8")
+            return HTTPStatus.OK, "text/html; charset=utf-8", fleet_html(
+                home, query=q, error=error
+            ).encode("utf-8")
         if route == "/api/fleet":
-            home = fleet_home(
+            home, error = _command_centre(
                 store,
                 census=census,
                 now=now,
                 stale_after=older,
-                include_github=github_raw in {"1", "true", "yes"},
+                live_local=live_local,
+                github=github,
                 threshold_label=threshold_label,
                 threshold_source=threshold_source,
+                query_text=q,
             )
+            if error:
+                home = {**home, "query_error": error}
             return HTTPStatus.OK, "application/json; charset=utf-8", _json(home)
+        if route == "/attention":
+            report = attention_report(
+                store,
+                now=now,
+                stale_after=older,
+                include_github=github,
+                inspect_local=_inspect_local(live_local),
+            )
+            clank = (query.get("clank") or [None])[0]
+            klass = (query.get("class") or [None])[0]
+            reason = (query.get("reason") or query.get("reason_code") or [None])[0]
+            items = report.get("items") or []
+            if clank:
+                items = [item for item in items if item.get("clank") == clank]
+            if klass:
+                items = [item for item in items if item.get("class") == klass]
+            if reason:
+                items = [item for item in items if item.get("reason_code") == reason]
+            report = {**report, "items": items}
+            report["snapshot"] = _snapshot(store, now)
+            report["mode"] = _mode(live_local, github)
+            error = None
+            if q.strip():
+                try:
+                    parse_filter(q)
+                except QueryError as exc:
+                    error = str(exc)
+                    report["items"] = []
+            return HTTPStatus.OK, "text/html; charset=utf-8", attention_html(
+                report, query=q, error=error
+            ).encode("utf-8")
+        if route == "/api/attention":
+            clank = (query.get("clank") or [None])[0]
+            report = attention_report(
+                store,
+                clank,
+                now=now,
+                stale_after=older,
+                include_github=github,
+                inspect_local=_inspect_local(live_local),
+            )
+            klass = (query.get("class") or [None])[0]
+            reason = (query.get("reason") or query.get("reason_code") or [None])[0]
+            items = report.get("items") or []
+            if klass:
+                items = [item for item in items if item.get("class") == klass]
+            if reason:
+                items = [item for item in items if item.get("reason_code") == reason]
+            report = {**report, "items": items, "snapshot": _snapshot(store, now), "mode": _mode(live_local, github)}
+            return HTTPStatus.OK, "application/json; charset=utf-8", _json(report)
+        if route == "/sessions":
+            payload = {
+                "sessions": list_sessions(store, now=now, stale_after=older),
+                "snapshot": _snapshot(store, now),
+                "mode": _mode(live_local, github),
+            }
+            return HTTPStatus.OK, "text/html; charset=utf-8", sessions_html(payload).encode("utf-8")
+        if route == "/api/sessions":
+            payload = {
+                "sessions": list_sessions(store, now=now, stale_after=older),
+                "snapshot": _snapshot(store, now),
+                "mode": _mode(live_local, github),
+            }
+            return HTTPStatus.OK, "application/json; charset=utf-8", _json(payload)
         if route == "/api/coverage":
             if census is None:
                 return HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8", b"census unavailable\n"
@@ -208,7 +429,8 @@ def dispatch(
                 _json(
                     reconcile_fleet(
                         store,
-                        include_github=github_raw in {"1", "true", "yes"},
+                        include_github=github,
+                        inspect_local=_inspect_local(live_local),
                     )
                 ),
             )
@@ -220,8 +442,10 @@ def dispatch(
                     {
                         "ok": True,
                         "mode": "read-only",
+                        "terminal": "beta",
                         "stale_after": DEFAULT_STALE_LABEL,
                         "connection": "per-request",
+                        "snapshot": _snapshot(store, now),
                     }
                 ),
             )
@@ -234,493 +458,104 @@ def dispatch(
                     reconcile_clank(
                         store,
                         slug,
-                        include_github=github_raw not in {"0", "false", "no"},
+                        include_github=github,
+                        inspect_local=_inspect_local(live_local),
                     )
                 ),
             )
         if route.startswith("/api/clank/"):
             slug = unquote(route.removeprefix("/api/clank/"))
-            return (
-                HTTPStatus.OK,
-                "application/json; charset=utf-8",
-                _json(
-                    dossier(
-                        store,
-                        slug,
-                        now=now,
-                        stale_after=older,
-                        include_github=github_raw not in {"0", "false", "no"},
-                    )
-                ),
-            )
-        if route.startswith("/clank/"):
-            slug = unquote(route.removeprefix("/clank/"))
-            payload = dossier(
+            payload = _dossier_payload(
                 store,
                 slug,
                 now=now,
                 stale_after=older,
-                include_github=github_raw not in {"0", "false", "no"},
+                live_local=live_local,
+                github=github,
+                limit=_timeline_limit(query),
             )
-            return HTTPStatus.OK, "text/html; charset=utf-8", _dossier_html(payload).encode("utf-8")
+            return HTTPStatus.OK, "application/json; charset=utf-8", _json(payload)
+        if route.startswith("/clank/"):
+            slug = unquote(route.removeprefix("/clank/"))
+            payload = _dossier_payload(
+                store,
+                slug,
+                now=now,
+                stale_after=older,
+                live_local=live_local,
+                github=github,
+                limit=_timeline_limit(query),
+            )
+            return HTTPStatus.OK, "text/html; charset=utf-8", dossier_html(payload).encode("utf-8")
     except NotFoundError as exc:
         return HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8", f"{exc}\n".encode("utf-8")
     return HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8", b"not found\n"
 
 
-def _page(title: str, body: str) -> str:
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <title>{html.escape(title)}</title>
-  <style>
-    :root {{ color-scheme: dark; }}
-    body {{ font-family: ui-monospace, Consolas, monospace; margin: 1.5rem; background: #0b0f14; color: #d7e0ea; }}
-    a {{ color: #7ec8e3; }}
-    table {{ border-collapse: collapse; width: 100%; font-size: 0.92rem; }}
-    th, td {{ border-bottom: 1px solid #243040; text-align: left; padding: 0.35rem 0.5rem; vertical-align: top; }}
-    .muted {{ color: #8aa0b5; }}
-    pre {{ white-space: pre-wrap; }}
-    header {{ margin-bottom: 1rem; }}
-    .summary {{ display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; margin: 0.8rem 0 1.2rem; }}
-    .summary div {{ border: 1px solid #243040; padding: 0.35rem 0.55rem; }}
-    .mark {{ font-weight: 700; }}
-    .src {{ font-weight: 700; }}
-    h2 {{ margin-top: 1.6rem; font-size: 1.05rem; }}
-    .note {{ margin: 0.4rem 0 1rem; }}
-    .harvest-observed {{ color: #8fd19e; }}
-    .harvest-timeout {{ color: #e0b15c; }}
-    .harvest-error {{ color: #e07a7a; }}
-    .harvest-unknown {{ color: #8aa0b5; }}
-    .attention-item {{ display: flex; gap: 0.7rem; border: 1px solid #243040; border-left-width: 0.45rem; padding: 0.45rem 0.6rem; margin: 0.4rem 0; }}
-    .attention-integrity {{ border-left-style: solid; }}
-    .attention-informational {{ border-left-style: dotted; }}
-    .attention-age {{ border-left-style: dashed; }}
-    .attention-shape {{ font-size: 1.15rem; width: 1.2rem; flex: 0 0 1.2rem; }}
-  </style>
-</head>
-<body>
-  <header>
-    <strong>ClankOps Terminal</strong>
-    <span class="muted"> read-only alpha · localhost · GET/HEAD only</span>
-    <div><a href="/">fleet</a> · <a href="/api/fleet">api/fleet</a> · <a href="/health">health</a></div>
-  </header>
-  {body}
-</body>
-</html>
-"""
-
-
-def _attention_html(home: dict[str, Any]) -> str:
-    from clankops.attention import CLASS_MARK
-
-    attention = home.get("attention") or {}
-    items = attention.get("items") or []
-    threshold = html.escape(_unknown(attention.get("threshold") or DEFAULT_STALE_LABEL))
-    source = html.escape(_unknown(attention.get("threshold_source") or "session-staleness default"))
-    header = (
-        "<h2>ATTENTION</h2>"
-        "<p class=\"muted\">Derived; not authoritative; writes zero ledger events. "
-        f"threshold {threshold} ({source}). "
-        "Freshness is evidence metadata, not truth. Old is not automatically wrong. "
-        "A different deployed SHA is not a failure.</p>"
+def _dossier_payload(
+    store: Store,
+    slug: str,
+    *,
+    now,
+    stale_after: timedelta,
+    live_local: bool,
+    github: bool,
+    limit: int,
+) -> dict[str, Any]:
+    payload = dossier(
+        store,
+        slug,
+        now=now,
+        stale_after=stale_after,
+        include_github=github,
+        inspect_local=_inspect_local(live_local),
     )
-    if not items:
-        return header + '<p class="muted">none derived</p>'
-    blocks = []
-    for item in items:
-        klass = item.get("class") or "unknown"
-        mark = html.escape(CLASS_MARK.get(klass, "·"))
-        name = html.escape(item.get("clank_name") or item.get("clank") or "unknown")
-        code = item.get("reason_code") or "unknown"
-        reason = html.escape(item.get("reason") or "")
-        evidence = item.get("evidence") or {}
-        bits = []
-        for key in (
-            "checkpoint_id",
-            "session_id",
-            "artifact_id",
-            "observation_id",
-            "surface_id",
-            "field",
-            "recorded",
-            "observed",
-            "artefact_sha",
-            "deployed_sha",
-        ):
-            value = evidence.get(key)
-            if value:
-                bits.append(f"{html.escape(key)}={html.escape(str(value))}")
-        evidence_html = (
-            f"<div class=\"muted\">evidence {' · '.join(bits)}</div>" if bits else ""
-        )
-        action = html.escape(item.get("suggested_action") or "")
-        provenance = ", ".join(html.escape(str(part)) for part in (item.get("provenance") or []))
-        blocks.append(
-            f"<div class=\"attention-item attention-{html.escape(klass)}\">"
-            f"<div class=\"attention-shape\" aria-hidden=\"true\">{mark}</div>"
-            "<div>"
-            f"<div><strong>{name}</strong> {_mark(code)}</div>"
-            f"<div>{reason}</div>"
-            f"<div class=\"muted\">mission {html.escape(_unknown(item.get('mission')))} · "
-            f"age {html.escape(_unknown(item.get('age')))} · "
-            f"source {html.escape(_unknown(item.get('source')))}</div>"
-            f"{evidence_html}"
-            f"<div class=\"muted\">action {action}</div>"
-            f"<div class=\"muted\">provenance {provenance or 'unknown'}</div>"
-            "</div></div>"
-        )
-    return header + "".join(blocks)
+    events = list(payload.get("timeline") or [])
+    payload["timeline"] = events[-limit:]
+    payload["timeline_limit"] = limit
+    payload["timeline_available"] = len(events)
+    payload["snapshot"] = _snapshot(store, now)
+    payload["mode"] = _mode(live_local, github)
+    payload["attention"] = attention_report(
+        store,
+        slug,
+        now=now,
+        stale_after=stale_after,
+        include_github=github,
+        inspect_local=_inspect_local(live_local),
+        reconcile=payload.get("reconcile"),
+    )
+    ci = None
+    for art in payload.get("artifacts") or []:
+        if art.get("kind") == CI_ARTIFACT_KIND:
+            ci = {
+                "sha": art.get("ref"),
+                "state": art.get("title"),
+                "title": art.get("title"),
+                "source": art.get("source"),
+            }
+            break
+    payload["ci"] = ci
+    for mission in payload.get("missions") or []:
+        count = store.conn.execute(
+            "SELECT COUNT(*) AS n FROM sessions WHERE mission_id = ?",
+            (mission["mission_id"],),
+        ).fetchone()
+        mission["session_count"] = int(count["n"] if count else 0)
+        cp = store.latest_checkpoint(payload["identity"]["clank_id"], mission["mission_id"])
+        mission["next_action"] = cp.get("next_action") if cp else None
+        mission["created_utc"] = mission.get("created_utc") or mission.get("created_at")
+    return payload
 
 
 def _fleet_html(home: dict[str, Any]) -> str:
-    summary = home.get("summary") or {}
-    coverage = home.get("coverage") or {}
-    chips = [
-        ("registered Clanks", summary.get("registered_clanks")),
-        ("ACTIVE Missions", summary.get("active_missions")),
-        ("PAUSED Missions", summary.get("paused_missions")),
-        ("BLOCKED Missions", summary.get("blocked_missions")),
-        ("open Sessions", summary.get("open_sessions")),
-        (f"stale Sessions ({summary.get('stale_after') or DEFAULT_STALE_LABEL})", summary.get("stale_sessions")),
-        (
-            "VERIFIED coverage",
-            (
-                f"{_unknown(summary.get('verified_registered'))}/"
-                f"{_unknown(summary.get('verified_candidates'))}"
-                if summary.get("verified_candidates") is not None
-                else "unknown"
-            ),
-        ),
-        (
-            "git evidence",
-            (
-                f"drift {summary.get('git_drift') or 0} · "
-                f"aligned {summary.get('git_aligned') or 0} · "
-                f"partial {summary.get('git_partial') or 0}"
-            ),
-        ),
-    ]
-    chip_html = "".join(
-        f"<div><span class=\"muted\">{html.escape(label)}</span><br><strong>{html.escape(str(value))}</strong></div>"
-        for label, value in chips
-    )
-    note = ""
-    if coverage:
-        unresolved = coverage.get("verified_unresolved_count")
-        note = (
-            f"<p class=\"note muted\">VERIFIED census identities: {coverage.get('verified_candidates')}; "
-            f"registered: {coverage.get('verified_registered')}; unresolved: {unresolved}. "
-            f"{html.escape(coverage.get('verified_denominator_note') or '')}</p>"
-        )
-    cells = []
-    for row in home.get("rows") or []:
-        slug = html.escape(row["slug"])
-        state = row.get("mission_state")
-        state_mark = _mark(state) if state else _mark("unknown")
-        session_bits = []
-        if row.get("open_session_id"):
-            session_bits.append(_mark("open"))
-            session_bits.append(html.escape(_unknown(row.get("actor"))))
-            session_bits.append(f"<span class=\"muted\">{html.escape(row['open_session_id'][:8])}</span>")
-        else:
-            session_bits.append(_mark("no-session"))
-        if row.get("stale_session"):
-            session_bits.append(_mark("stale"))
-        if row.get("anomaly"):
-            session_bits.append(_mark("ANOMALY"))
-        wt = row.get("working_tree")
-        wt_mark = _mark(wt) if wt else _mark("unknown")
-        next_action = row.get("next_action")
-        rec_status = row.get("reconcile_status") or "unknown"
-        cells.append(
-            "<tr>"
-            f"<td><a href=\"/clank/{slug}\">{slug}</a><br><span class=\"muted\">{html.escape(row.get('display_name') or slug)}</span></td>"
-            f"<td>{html.escape(_unknown(row.get('mission_display')))}</td>"
-            f"<td>{state_mark}</td>"
-            f"<td>{' '.join(session_bits)}</td>"
-            f"<td>{html.escape(_unknown(row.get('latest_checkpoint_utc')))}</td>"
-            f"<td>{html.escape(_unknown(row.get('branch')))}<br><span class=\"muted\">live {html.escape(_unknown(row.get('observed_branch')))}</span></td>"
-            f"<td>{html.escape(_unknown(row.get('head_short')))}<br><span class=\"muted\">live {html.escape(_unknown(row.get('observed_head_short')))}</span></td>"
-            f"<td>{wt_mark}</td>"
-            f"<td>{html.escape(_unknown(next_action))}</td>"
-            f"<td>{html.escape(_unknown(row.get('age_since_last_event')))}</td>"
-            f"<td>{_mark(rec_status)}</td>"
-            "</tr>"
-        )
-    table = (
-        "<table><thead><tr>"
-        "<th>Clank</th><th>Mission</th><th>Mission state</th><th>actor / open Session</th>"
-        "<th>last checkpoint</th><th>branch</th><th>HEAD</th><th>working tree</th>"
-        "<th>next action</th><th>age since last event</th><th>evidence</th>"
-        "</tr></thead><tbody>"
-        + "".join(cells)
-        + "</tbody></table>"
-    )
-    return _page(
-        "ClankOps Terminal",
-        f"<div class=\"summary\">{chip_html}</div>{note}{_attention_html(home)}{table}",
-    )
-
-
-def _list_block(title: str, rows: list[dict[str, Any]], render) -> str:
-    if not rows:
-        return f"<h2>{html.escape(title)}</h2><p class=\"muted\">none recorded</p>"
-    items = "".join(f"<li>{render(row)}</li>" for row in rows)
-    return f"<h2>{html.escape(title)}</h2><ul>{items}</ul>"
-
-
-def _session_dossier_html(session: dict[str, Any]) -> str:
-    process = session.get("managed_process") or {}
-    status = process.get("status") or "UNKNOWN"
-    sid = html.escape(session.get("session_id") or "")
-    actor = html.escape(_unknown(session.get("actor")))
-    launcher = html.escape(_unknown(session.get("launcher")))
-    bits = [
-        f"<div>{_mark('SESSION')} {sid}</div>",
-        f"<div>actor: {actor} {_mark(str(session.get('actor') or 'unknown'))}</div>",
-        f"<div>launcher: {launcher}</div>",
-    ]
-    if status == "EXITED":
-        code = html.escape(str(process.get("exit_code")))
-        age = html.escape(str(process.get("process_age") or "unknown"))
-        bits.append(f"<div>process: {_mark('EXITED')} (code {code}, {age} ago)</div>")
-    elif status == "START_FAILED":
-        bits.append(f"<div>process: {_mark('START_FAILED')} (never started)</div>")
-    else:
-        bits.append(f"<div>process: {_mark('UNKNOWN')}</div>")
-    if session.get("open"):
-        bits.append(
-            f"<div>session: {_mark('OPEN')} — handoff: {_mark('MISSING')} — explicit handoff required</div>"
-        )
-    else:
-        handoff = (session.get("handoff") or (session.get("managed_process") or {}).get("handoff") or "UNKNOWN")
-        bits.append(f"<div>session: {_mark('CLOSED')}</div>")
-        bits.append(f"<div>handoff: {_mark(str(handoff))}</div>")
-    if session.get("stale"):
-        bits.append(f" {_mark('stale')}")
-    if session.get("anomaly"):
-        bits.append(f" {_mark('ANOMALY')}")
-    return "".join(bits)
+    """Compatibility wrapper for Foundation tests."""
+    return fleet_html(home)
 
 
 def _dossier_html(payload: dict[str, Any]) -> str:
-    ident = payload["identity"]
-    now = payload.get("now") or {}
-    sessions = now.get("open_sessions") or []
-    session_html = _mark("none") if not sessions else "".join(
-        _session_dossier_html(s) for s in sessions
-    )
-    next_action = now.get("next_action")
-    now_section = f"""
-<h2>NOW</h2>
-<table>
-  <tr><th>Mission</th><td>{html.escape(_unknown(now.get('mission_display')))} {html.escape(_unknown(now.get('mission_objective')))}</td></tr>
-  <tr><th>state</th><td>{_mark(_unknown(now.get('mission_state')))}</td></tr>
-  <tr><th>open Sessions</th><td>{session_html}</td></tr>
-  <tr><th>checkpoint</th><td>{html.escape(_unknown((now.get('checkpoint') or {}).get('recorded_utc') if now.get('checkpoint') else None))}</td></tr>
-  <tr><th>branch / HEAD</th><td>{html.escape(_unknown(now.get('branch')))} / {html.escape(_unknown(now.get('head')))}</td></tr>
-  <tr><th>working tree</th><td>{_mark(_unknown(now.get('working_tree')))}</td></tr>
-  <tr><th>tests</th><td>{html.escape(_unknown(now.get('tests')))}</td></tr>
-  <tr><th>blockers</th><td>{html.escape('; '.join(b.get('description') or '' for b in (now.get('blockers') or [])) or 'none recorded')}</td></tr>
-  <tr><th>outstanding tasks</th><td>{html.escape('; '.join(t.get('title') or '' for t in (now.get('outstanding_tasks') or [])) or 'none recorded')}</td></tr>
-  <tr><th>next action</th><td>{html.escape(_unknown(next_action))}</td></tr>
-</table>
-"""
-    rec = payload.get("reconcile") or {}
-    rec_rows = []
-    for item in rec.get("drift") or []:
-        rec_rows.append(
-            "<tr>"
-            f"<td>{_mark(str(item.get('kind') or 'mismatch'))}</td>"
-            f"<td>{html.escape(_unknown(item.get('field')))}</td>"
-            f"<td>{_mark(str(item.get('source') or ''))}<span class=\"src\"> {html.escape(_unknown(item.get('source')))}</span></td>"
-            f"<td>{html.escape(_unknown(item.get('recorded')))}</td>"
-            f"<td>{html.escape(_unknown(item.get('observed')))}</td>"
-            "</tr>"
-        )
-    local = rec.get("observed_local") or {}
-    github = rec.get("observed_github") or {}
-    recorded = rec.get("recorded") or {}
-    status = rec.get("status") or "unknown"
-    captions = {
-        "aligned": "all comparable recorded claims corroborated",
-        "partial": "some recorded claims corroborated; others unobservable",
-        "no-record": "no recorded Git state to reconcile",
-        "unknown": "recorded state could not be independently verified",
-        "drift": "at least one independently compared fact contradicts the recorded state",
-    }
-    caption = captions.get(status, captions["unknown"])
-    if status == "drift" and rec_rows:
-        result_block = (
-            f"<p class=\"muted\">{html.escape(caption)}</p>"
-            "<table><thead><tr><th>kind</th><th>field</th><th>source</th><th>recorded</th><th>observed</th></tr></thead><tbody>"
-            + "".join(rec_rows)
-            + "</tbody></table>"
-        )
-    else:
-        result_block = f"<p class=\"muted\">{html.escape(caption)}</p>"
-    cmp_rows = []
-    for field, item in (rec.get("comparisons") or {}).items():
-        cmp_rows.append(
-            "<tr>"
-            f"<td>{html.escape(field)}</td>"
-            f"<td>{_mark(str(item.get('status') or 'unknown'))}</td>"
-            f"<td>{_mark(str(item.get('source') or 'none'))}<span class=\"src\"> {html.escape(_unknown(item.get('source')))}</span></td>"
-            f"<td>{html.escape(_unknown(item.get('recorded')))}</td>"
-            f"<td>{html.escape(_unknown(item.get('observed')))}</td>"
-            "</tr>"
-        )
-    cmp_table = (
-        "<table><thead><tr><th>field</th><th>coverage</th><th>source</th><th>recorded</th><th>observed</th></tr></thead><tbody>"
-        + "".join(cmp_rows)
-        + "</tbody></table>"
-        if cmp_rows
-        else ""
-    )
-    github_err = github.get("error") if github else "not requested"
-    prs = github.get("open_prs") if github else []
-    pr_text = ", ".join(
-        f"#{p.get('number')} {p.get('head_ref')} {(p.get('head') or '')[:7]}"
-        for p in (prs or [])
-    ) or "none"
-    checks = (github.get("checks") or {}) if github else {}
-    check_runs = checks.get("runs") or []
-    check_run_text = ", ".join(
-        f"{run.get('name') or 'check'} {run.get('conclusion') or run.get('status') or 'unknown'}"
-        for run in check_runs
-    ) or "no check-runs"
-    context_text = ", ".join(
-        f"{ctx.get('context') or 'status'} {ctx.get('state') or 'unknown'}"
-        for ctx in (checks.get("contexts") or [])
-    ) or "no status contexts"
-    reconcile_section = f"""
-<h2>RECONCILIATION</h2>
-<p class="muted">Independent LOCAL_GIT / GITHUB observation vs recorded claims. Observer success is not corroboration. Empty CI is none only when check-runs and status contexts were both observed empty. Unavailable status evidence is unknown, never none. Success requires completed check-runs. History is not rewritten.</p>
-<table>
-  <tr><th>status</th><td>{_mark(_unknown(status))} {html.escape(caption)}</td></tr>
-  <tr><th>recorded claim</th><td>{html.escape(_unknown(recorded.get('branch')))} / {html.escape(_unknown(recorded.get('head')))} / {html.escape(_unknown(recorded.get('working_tree')))} [{html.escape(_unknown(recorded.get('event_source')))}]</td></tr>
-  <tr><th>LOCAL_GIT</th><td>{_mark('LOCAL_GIT')} {html.escape(_unknown(local.get('branch')))} / {html.escape(_unknown(local.get('head')))} / {html.escape(_unknown(local.get('working_tree')))} {html.escape(local.get('error') or '')}</td></tr>
-  <tr><th>GITHUB</th><td>{_mark('GITHUB')} default {html.escape(_unknown(github.get('default_branch') if github else None))} / {html.escape(_unknown(github.get('default_branch_head') if github else None))} PRs {html.escape(pr_text)} {html.escape(str(github_err or ''))}</td></tr>
-  <tr><th>CI checks</th><td>{_mark('GITHUB')} {html.escape(_unknown(checks.get('state')))} sha {html.escape(_unknown(checks.get('sha')))} {html.escape(check_run_text)}; {html.escape(context_text)} {html.escape(_unknown(checks.get('error')))}</td></tr>
-</table>
-{cmp_table}
-{result_block}
-"""
-    trows = []
-    for event in payload.get("timeline") or []:
-        labels = event.get("provenance") or [event.get("source")]
-        src = " ".join(_mark(str(label)) + f"<span class=\"src\"> {html.escape(str(label))}</span>" for label in labels if label)
-        trows.append(
-            "<tr>"
-            f"<td>{html.escape(str(event.get('ledger_seq')))}</td>"
-            f"<td>{html.escape(_unknown(event.get('ts_utc')))}</td>"
-            f"<td>{html.escape(_unknown(event.get('event_type')))}</td>"
-            f"<td>{html.escape(_unknown(event.get('actor')))}</td>"
-            f"<td>{src}</td>"
-            f"<td>{html.escape(_unknown(event.get('session_id')))}</td>"
-            f"<td>{html.escape(_unknown(event.get('summary')) if event.get('summary') else '') or html.escape('—')}</td>"
-            "</tr>"
-        )
-    timeline = (
-        "<h2>TIMELINE</h2>"
-        "<p class=\"muted\">canonical ledger_seq order · provenance shown as text, never colour alone</p>"
-        "<table><thead><tr><th>seq</th><th>timestamp</th><th>event type</th><th>actor</th>"
-        "<th>source</th><th>Session</th><th>summary</th></tr></thead><tbody>"
-        + "".join(trows)
-        + "</tbody></table>"
-    )
-    missions = _list_block(
-        "MISSIONS",
-        payload.get("missions") or [],
-        lambda m: (
-            f"{_mark(m.get('state') or 'unknown')} {html.escape(m.get('display_id') or '')} — "
-            f"{html.escape(m.get('objective') or '')}"
-            + (f" {_mark('RECONCILED')}" if m.get("reconciliation") else "")
-        ),
-    )
-    reconciliations = _list_block(
-        "MISSION RECONCILIATIONS",
-        payload.get("reconciliations") or [],
-        lambda r: (
-            f"{_mark('RECONCILED')} {html.escape(r.get('mission_display') or r.get('mission_id') or '')} "
-            f"{html.escape(str(r.get('from_state') or ''))} -> {html.escape(str(r.get('to_state') or ''))} "
-            f"reason {html.escape(r.get('reason') or 'unknown')} "
-            f"basis {html.escape(r.get('reconciliation_basis') or 'unknown')} "
-            f"reconciled {html.escape(r.get('observed_at') or 'unknown')}"
-            + (
-                f" evidence occurred {html.escape(r.get('evidence_occurred_at'))}"
-                if r.get("evidence_occurred_at")
-                else ""
-            )
-        ),
-    )
-    features = _list_block(
-        "FEATURES",
-        payload.get("features") or [],
-        lambda f: f"{_mark(f.get('state') or 'unknown')} {html.escape(f.get('name') or '')}",
-    )
-    tasks = _list_block(
-        "TASKS",
-        payload.get("tasks") or [],
-        lambda t: f"{_mark(t.get('state') or 'unknown')} {html.escape(t.get('title') or '')}",
-    )
-    decisions = _list_block(
-        "DECISIONS",
-        payload.get("decisions") or [],
-        lambda d: html.escape(d.get("statement") or ""),
-    )
-    artifacts = _list_block(
-        "ARTEFACTS",
-        payload.get("artifacts") or [],
-        lambda a: (
-            f"{_mark(str(a.get('source') or 'unknown'))} "
-            f"{html.escape(a.get('kind') or '')} "
-            f"{html.escape(a.get('title') or a.get('ref') or '')}"
-        ),
-    )
-    deployments = _list_block(
-        "DEPLOYMENTS",
-        payload.get("deployments") or [],
-        lambda d: (
-            f"{html.escape(_unknown(d.get('surface_id')))} "
-            f"{_mark(str(d.get('environment') or 'unknown'))} "
-            f"host {html.escape(_unknown(d.get('host_identity')))} "
-            f"sha {html.escape(_unknown(d.get('sha_short') or (d.get('deployed_sha') or '')[:7]))} "
-            f"age {html.escape(_unknown(d.get('age')))} "
-            f"deployed {_mark(str(d.get('deployed') or 'unknown'))} "
-            f"running {_mark(str(d.get('running') or 'unknown'))} "
-            f"collection: {html.escape(_unknown(d.get('collection_authority')))} "
-            f"notification: {html.escape(_unknown(d.get('notification_authority')))} "
-            f"scheduler {html.escape(_unknown(d.get('scheduler')))} "
-            f"{html.escape(d.get('scheduler_cadence') or '')} "
-            f"state {html.escape(_unknown(d.get('state_store')))} "
-            f"{_mark(str(d.get('source') or 'unknown'))} "
-            f"{html.escape(_unknown(d.get('observed_how')))}"
-        ),
-    )
-    brief_pre = (
-        "<details><summary class=\"muted\">raw brief (input)</summary>"
-        f"<pre>{html.escape(format_brief(payload.get('brief') or payload))}</pre></details>"
-    )
-    heading = f"<h1>{html.escape(ident.get('display_name') or ident.get('slug') or '')}</h1>"
-    return _page(
-        f"{ident.get('slug')} · ClankOps Terminal",
-        heading
-        + now_section
-        + reconcile_section
-        + _local_git_harvest_html(payload.get("local_git_harvest") or {})
-        + timeline
-        + missions
-        + reconciliations
-        + features
-        + tasks
-        + decisions
-        + artifacts
-        + deployments
-        + brief_pre,
-    )
+    """Compatibility wrapper for Foundation tests."""
+    return dossier_html(payload)
 
 
 class TerminalHandler(BaseHTTPRequestHandler):
@@ -736,8 +571,8 @@ class TerminalHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-ClankOps-Mode", "read-only")
+        for key, value in SECURITY_HEADERS:
+            self.send_header(key, value)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -765,6 +600,31 @@ class TerminalHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         self._handle("POST")
 
+    def do_PUT(self) -> None:  # noqa: N802
+        self._handle("PUT")
+
+    def do_PATCH(self) -> None:  # noqa: N802
+        self._handle("PATCH")
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        self._handle("DELETE")
+
+
+def assert_bind_allowed(host: str, *, allow_remote: bool = False) -> str:
+    cleaned = (host or "").strip() or DEFAULT_HOST
+    if cleaned in LOOPBACK_HOSTS:
+        return cleaned
+    try:
+        if ip_address(cleaned).is_loopback:
+            return cleaned
+    except ValueError:
+        pass
+    if allow_remote:
+        return cleaned
+    raise ValidationError(
+        f"non-loopback Terminal bind {cleaned!r} requires --allow-remote"
+    )
+
 
 def serve(
     *,
@@ -775,7 +635,9 @@ def serve(
     census_path: str | Path | None = None,
     stale_after: timedelta = DEFAULT_STALE,
     clock: Clock | None = None,
+    allow_remote: bool = False,
 ) -> ThreadingHTTPServer:
+    bound = assert_bind_allowed(host, allow_remote=allow_remote)
     loaded = _load_census(census, census_path)
     handler = type(
         "BoundTerminalHandler",
@@ -787,4 +649,4 @@ def serve(
             "clock": clock,
         },
     )
-    return ThreadingHTTPServer((host, port), handler)
+    return ThreadingHTTPServer((bound, port), handler)

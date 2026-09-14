@@ -234,6 +234,20 @@ def stale_sessions(
     return rows
 
 
+def list_sessions(
+    store: Store,
+    *,
+    now: datetime | None = None,
+    stale_after: timedelta = DEFAULT_STALE,
+    open_only: bool = False,
+) -> list[dict[str, Any]]:
+    """Open and/or closed Sessions with process/handoff views. Read-only."""
+    return [
+        observe_session(store, row, now=now, stale_after=stale_after)
+        for row in _session_rows(store, open_only=open_only)
+    ]
+
+
 def session_anomalies(
     store: Store, *, now: datetime | None = None, stale_after: timedelta = DEFAULT_STALE
 ) -> list[dict[str, Any]]:
@@ -360,6 +374,7 @@ def fleet_home(
         "blocked_missions": state_counts["BLOCKED"],
         "open_sessions": len(open_rows),
         "stale_sessions": len(stale_rows),
+        "planned_missions": state_counts["PLANNED"],
         "stale_after": "24h" if stale_after == DEFAULT_STALE else str(stale_after),
         "verified_candidates": coverage["verified_candidates"] if coverage else None,
         "verified_registered": coverage["verified_registered"] if coverage else None,

@@ -26,7 +26,7 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 11 (Mission lifecycle reconciliation). Fleet Harvest 1 (one-shot local Git evidence). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron. No remote SSH from ClankOps.
+Foundation 11 (Mission lifecycle reconciliation). Fleet Harvest 1 (one-shot local Git evidence). Terminal Beta (read-only Fleet Command Centre). Local-first Python 3.14+ + SQLite. No production deployment. No cron. No remote SSH from ClankOps.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 
@@ -82,11 +82,10 @@ python -m clankops --json resume-packet clankops --no-github
 python -m clankops --json agent prepare clankops --actor cursor --no-github
 python -m clankops --json agent launch clankops --actor cursor --launcher cursor --no-github --command python -c "pass"
 python -m clankops --json harvest local-git --dry-run
-python -m clankops --json harvest local-git
 python -m clankops terminal
 ```
 
-The Terminal is localhost-only and read-only. It does not schedule collection or deploy anything.
+The Terminal is localhost-only and read-only. Default pages are snapshots; `?live=1` and `?github=1` are explicit. It does not harvest, schedule collection, or deploy. See [Terminal Beta](docs/TERMINAL_BETA.md).
 
 ## Documentation
 
@@ -106,7 +105,7 @@ The Terminal is localhost-only and read-only. It does not schedule collection or
 - [Foundation 9 launcher admission](docs/FOUNDATION_9.md)
 - [Foundation 10 process exit](docs/FOUNDATION_10.md)
 - [Foundation 11 mission reconciliation](docs/FOUNDATION_11.md)
-- [Fleet Harvest 1 local Git evidence](docs/FLEET_HARVEST_1.md)
+- [Terminal Beta Fleet Command Centre](docs/TERMINAL_BETA.md)
 - [Future scope](docs/FUTURE_SCOPE.md)
 
 ## Tests
