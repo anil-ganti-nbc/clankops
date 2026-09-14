@@ -47,6 +47,8 @@ python -m clankops --actor cursor agent admit oem-radar --mission COPS-000003
 python -m clankops --actor cursor agent launch oem-radar --launcher cursor --no-github --command <agent argv...>
 ```
 
+Managed child exit is recorded as `AGENT_PROCESS_EXITED`. The Session stays open. That is not a handoff. Missing process evidence is UNKNOWN, not RUNNING. See [Foundation 10](FOUNDATION_10.md).
+
 ## Stop / handoff
 
 ```text

@@ -406,17 +406,44 @@ def _list_block(title: str, rows: list[dict[str, Any]], render) -> str:
     return f"<h2>{html.escape(title)}</h2><ul>{items}</ul>"
 
 
+def _session_dossier_html(session: dict[str, Any]) -> str:
+    process = session.get("managed_process") or {}
+    status = process.get("status") or "UNKNOWN"
+    sid = html.escape(session.get("session_id") or "")
+    actor = html.escape(_unknown(session.get("actor")))
+    launcher = html.escape(_unknown(session.get("launcher")))
+    bits = [
+        f"<div>{_mark('SESSION')} {sid}</div>",
+        f"<div>actor: {actor} {_mark(str(session.get('actor') or 'unknown'))}</div>",
+        f"<div>launcher: {launcher}</div>",
+    ]
+    if status == "EXITED":
+        code = html.escape(str(process.get("exit_code")))
+        age = html.escape(str(process.get("process_age") or "unknown"))
+        bits.append(f"<div>process: {_mark('EXITED')} (code {code}, {age} ago)</div>")
+    elif status == "START_FAILED":
+        bits.append(f"<div>process: {_mark('START_FAILED')} (never started)</div>")
+    else:
+        bits.append(f"<div>process: {_mark('UNKNOWN')}</div>")
+    if session.get("open"):
+        bits.append(
+            f"<div>handoff: {_mark('OPEN SESSION')} — explicit handoff required</div>"
+        )
+    else:
+        bits.append(f"<div>handoff: {_mark('RECORDED')}</div>")
+    if session.get("stale"):
+        bits.append(f" {_mark('stale')}")
+    if session.get("anomaly"):
+        bits.append(f" {_mark('ANOMALY')}")
+    return "".join(bits)
+
+
 def _dossier_html(payload: dict[str, Any]) -> str:
     ident = payload["identity"]
     now = payload.get("now") or {}
     sessions = now.get("open_sessions") or []
     session_html = _mark("none") if not sessions else "".join(
-        f"<div>{_mark('open')} {html.escape(_unknown(s.get('actor')))} "
-        f"{html.escape(s.get('session_id') or '')} "
-        f"age {html.escape(_unknown(s.get('age')))}"
-        f"{' ' + _mark('stale') if s.get('stale') else ''}"
-        f"{' ' + _mark('ANOMALY') if s.get('anomaly') else ''}</div>"
-        for s in sessions
+        _session_dossier_html(s) for s in sessions
     )
     next_action = now.get("next_action")
     now_section = f"""

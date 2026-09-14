@@ -38,7 +38,9 @@ Ideas noticed during Foundation 0. None of these are implemented. Do not treat t
   treat agent identity as a permission.
 - Foundation 9 is the managed launch gate (`clankctl agent launch`):
   prepare, admit, then spawn. Actor/launcher names remain provenance.
-  Child exit is not a handoff.
+- Foundation 10 records managed process exit (`AGENT_PROCESS_EXITED`)
+  without closing the Session. Child exit is not a handoff. Missing
+  evidence stays UNKNOWN, never RUNNING.
 - Inject the [agent logging contract](AGENT_LOGGING_CONTRACT.md) into Cursor/Codex/Claude/GLM/Grok launchers
 - Session auto-start from agent identity
 - Refuse to start Clank work until `brief` has been read

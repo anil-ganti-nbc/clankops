@@ -25,7 +25,7 @@ Foundation 0/0.1 is the ledger. Foundation 1 makes Cursor adoption operational v
 7. **Record architectural decisions** with rationale.
 8. **Record blockers** that actually prevent progress.
 9. **Attach evidence** as artefacts. Mark the source honestly: local git vs GitHub vs agent report.
-10. **Before stopping**, set Mission state explicitly via `handoff`. Do not leave an ACTIVE mission by vanishing.
+10. **Before stopping**, set Mission state explicitly via `handoff`. Do not leave an ACTIVE mission by vanishing. A managed process exiting is evidence that the child returned; it is not a handoff and does not close the Session.
 11. **Final checkpoint must contain the exact next action** if one is known. If unknown, omit it. Do not fabricate.
 
 ## Provenance rules for agents

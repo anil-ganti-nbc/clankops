@@ -153,7 +153,7 @@ not absorb launcher ownership.
 
 ## Out of scope
 
-- Foundation 10
+- Foundation 11
 - Treating actor/launcher as a permission
 - Auto-complete / auto-close on child exit
 - A second handoff system

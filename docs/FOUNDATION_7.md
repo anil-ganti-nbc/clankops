@@ -46,6 +46,7 @@ Stable codes are part of the output contract. There is no opaque score.
 | `CI_EVIDENCE_BEHIND_MISSION` | integrity | Latest `github_ci` artefact SHA differs from the Mission's recorded HEAD |
 | `DEPLOYMENT_DIFFERS_FROM_MISSION` | informational | A current deployment observation's SHA differs from the Mission's recorded HEAD |
 | `STALE_OPEN_SESSION` | age | Open Session older than the Session-staleness threshold |
+| `MANAGED_PROCESS_EXITED_WITH_OPEN_SESSION` | informational | Foundation 10: a managed process exited and that Session is still open. Not Mission failure. |
 
 Each item includes Clank, Mission, `reason_code`, plain-English reason,
 relevant age/timestamp, evidence identifiers, suggested operator action,
@@ -87,7 +88,7 @@ are rendered as text plus icon/shape. Colour is not the only signal.
 
 ## Out of scope
 
-- Foundation 9
+- Foundation 10
 - Mutating Missions or auto-closing Sessions
 - Scheduling product Clanks
 - SSH / live host inventory

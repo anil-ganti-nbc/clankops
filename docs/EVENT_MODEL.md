@@ -46,6 +46,8 @@ Corrections are new events. Existing events are never silently edited to represe
 | `RELATIONSHIP_RECORDED` | relationship_id, from_clank_id, to_clank_id, kind |
 | `CENSUS_CANDIDATE_RECORDED` | full candidate snapshot |
 | `DEPLOYMENT_OBSERVED` | observation_id, surface_id, environment, host_identity, runtime_path, deployed_sha, image_id, runtime_identity, deployed, running, scheduler, scheduler_cadence, state_store, collection_authority, notification_authority, webhook_configured, sent_count, observed_at, observed_how, observer, notes, sanitised metadata |
+| `AGENT_PROCESS_EXITED` | observation_id, kind=EXITED, session_id, mission_id, clank_id, actor, launcher, context_fingerprint, executable, argv_count, argv_redacted, exit_code, observed_at, observed_how, observer, source |
+| `AGENT_PROCESS_START_FAILED` | observation_id, kind=START_FAILED, session_id, mission_id, clank_id, actor, launcher, context_fingerprint, executable, argv_count, argv_redacted, error (exception class name), observed_at, observed_how, observer, source |
 
 ## Mission states
 
