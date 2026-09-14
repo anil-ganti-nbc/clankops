@@ -686,38 +686,46 @@ class Store:
         source: str | EventSource | None = None,
         commit: bool = True,
     ) -> dict[str, Any]:
-        row = self.resolve_mission(mission)
-        current = MissionState(row["state"])
-        target = MissionState(to_state)
-        if target not in MISSION_TRANSITIONS[current]:
-            raise InvalidTransitionError(
-                f"cannot transition mission {row['display_id']} from {current} to {target}"
-            )
-        if target in MISSION_WORK_STOPPED:
-            self._end_open_sessions(
-                row["mission_id"],
+        own_tx = bool(commit)
+        if own_tx:
+            self._begin_immediate()
+        try:
+            row = self.resolve_mission(mission)
+            current = MissionState(row["state"])
+            target = MissionState(to_state)
+            if target not in MISSION_TRANSITIONS[current]:
+                raise InvalidTransitionError(
+                    f"cannot transition mission {row['display_id']} from {current} to {target}"
+                )
+            if target in MISSION_WORK_STOPPED:
+                self._end_open_sessions(
+                    row["mission_id"],
+                    actor=actor,
+                    reason=f"mission_{str(target).lower()}",
+                )
+            payload: dict[str, Any] = {
+                "from_state": str(current),
+                "to_state": str(target),
+            }
+            if reason:
+                payload["reason"] = reason
+            if superseded_by:
+                payload["superseded_by"] = superseded_by
+            self._emit(
+                EventType.MISSION_STATE_CHANGED,
+                payload,
                 actor=actor,
-                reason=f"mission_{str(target).lower()}",
+                source=source,
+                clank_id=row["clank_id"],
+                mission_id=row["mission_id"],
+                bind_session=False,
             )
-        payload: dict[str, Any] = {
-            "from_state": str(current),
-            "to_state": str(target),
-        }
-        if reason:
-            payload["reason"] = reason
-        if superseded_by:
-            payload["superseded_by"] = superseded_by
-        self._emit(
-            EventType.MISSION_STATE_CHANGED,
-            payload,
-            actor=actor,
-            source=source,
-            clank_id=row["clank_id"],
-            mission_id=row["mission_id"],
-            bind_session=False,
-        )
-        if commit:
-            self.commit()
+            if own_tx:
+                self.commit()
+        except Exception:
+            if own_tx:
+                self.conn.rollback()
+            raise
         return self.resolve_mission(row["mission_id"])
 
     def pause_mission(self, mission: str, **kwargs: Any) -> dict[str, Any]:
@@ -727,23 +735,38 @@ class Store:
         return self.transition_mission(mission, MissionState.BLOCKED, **kwargs)
 
     def resume_mission(self, mission: str, **kwargs: Any) -> dict[str, Any]:
-        row = self.resolve_mission(mission)
-        if row["state"] not in {MissionState.PAUSED, MissionState.BLOCKED, MissionState.PLANNED}:
-            raise InvalidTransitionError(
-                f"cannot resume mission {row['display_id']} from {row['state']}"
-            )
         actor = kwargs.get("actor")
         source = kwargs.get("source")
-        result = self.transition_mission(
-            mission, MissionState.ACTIVE, actor=actor, source=source
-        )
-        session = self.start_session(
-            row["mission_id"],
-            actor=actor,
-            source=source,
-            launcher=kwargs.get("launcher"),
-            context_fingerprint=kwargs.get("context_fingerprint"),
-        )
+        self._begin_immediate()
+        try:
+            row = self.resolve_mission(mission)
+            if row["state"] not in {
+                MissionState.PAUSED,
+                MissionState.BLOCKED,
+                MissionState.PLANNED,
+            }:
+                raise InvalidTransitionError(
+                    f"cannot resume mission {row['display_id']} from {row['state']}"
+                )
+            result = self.transition_mission(
+                mission,
+                MissionState.ACTIVE,
+                actor=actor,
+                source=source,
+                commit=False,
+            )
+            session = self.start_session(
+                row["mission_id"],
+                actor=actor,
+                source=source,
+                launcher=kwargs.get("launcher"),
+                context_fingerprint=kwargs.get("context_fingerprint"),
+                commit=False,
+            )
+            self.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
         result["session_id"] = session["session_id"]
         return result
 
@@ -1669,7 +1692,40 @@ class Store:
             mission_row = self.abandon_mission(mission, actor=actor, source=source)
         else:
             raise ValidationError(f"unsupported handoff state: {target}")
-        return {"checkpoint": checkpoint, "mission": mission_row}
+        session_id = None
+        event_id = checkpoint.get("event_id")
+        if event_id:
+            bound = self.conn.execute(
+                "SELECT session_id FROM events WHERE event_id = ?",
+                (event_id,),
+            ).fetchone()
+            if bound is not None:
+                session_id = bound["session_id"]
+        handoff_id = new_id()
+        self._emit(
+            EventType.HANDOFF_RECORDED,
+            {
+                "handoff_id": handoff_id,
+                "session_id": session_id,
+                "mission_id": mission_row["mission_id"],
+                "clank_id": mission_row["clank_id"],
+                "to_state": str(mission_row["state"]),
+                "checkpoint_id": checkpoint.get("checkpoint_id"),
+            },
+            actor=actor,
+            source=source,
+            clank_id=mission_row["clank_id"],
+            mission_id=mission_row["mission_id"],
+            session_id=session_id,
+            provenance={"recorder": "clankops.store", "canonical": "handoff_mission"},
+            bind_session=False,
+        )
+        self.commit()
+        return {
+            "checkpoint": checkpoint,
+            "mission": mission_row,
+            "handoff_id": handoff_id,
+        }
 
 
 def open_store(

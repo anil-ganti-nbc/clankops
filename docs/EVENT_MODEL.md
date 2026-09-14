@@ -48,6 +48,12 @@ Corrections are new events. Existing events are never silently edited to represe
 | `DEPLOYMENT_OBSERVED` | observation_id, surface_id, environment, host_identity, runtime_path, deployed_sha, image_id, runtime_identity, deployed, running, scheduler, scheduler_cadence, state_store, collection_authority, notification_authority, webhook_configured, sent_count, observed_at, observed_how, observer, notes, sanitised metadata |
 | `AGENT_PROCESS_EXITED` | observation_id, kind=EXITED, session_id, mission_id, clank_id, actor, launcher, context_fingerprint, executable, argv_count, argv_redacted, exit_code, observed_at, observed_how, observer, source |
 | `AGENT_PROCESS_START_FAILED` | observation_id, kind=START_FAILED, session_id, mission_id, clank_id, actor, launcher, context_fingerprint, executable, argv_count, argv_redacted, error (exception class name), observed_at, observed_how, observer, source |
+| `MISSION_STATE_RECONCILED` | reconciliation_id, mission_id, clank_id, from_state, to_state, reason, evidence `[{kind,value,source}]`, optional evidence_occurred_at, reconciliation_basis, observed_at |
+| `HANDOFF_RECORDED` | handoff_id, session_id, mission_id, clank_id, to_state, checkpoint_id |
+
+Ordinary Mission lifecycle uses `MISSION_STATE_CHANGED` and `MISSION_TRANSITIONS`. `MISSION_STATE_RECONCILED` is a later correction of **present projected knowledge** from explicit evidence. It does not rewrite or delete prior events, does not fabricate an ACTIVE interval or Session, and its `ts_utc` is when reconciliation occurred — never the evidence's own time. Event `source` must be `USER`; GitHub/CI/deployment/local git belong on `evidence[].source`. See [Foundation 11](FOUNDATION_11.md).
+
+`HANDOFF_RECORDED` is emitted only by canonical `handoff_mission()`. Do not infer a handoff from `CHECKPOINT_RECORDED` plus a Mission leave-ACTIVE `SESSION_ENDED`. Historical Sessions without this event stay `UNKNOWN`.
 
 ## Mission states
 
@@ -64,6 +70,8 @@ Corrections are new events. Existing events are never silently edited to represe
 `SUPERSEDED` is terminal.
 
 Invalid transitions raise; they do not write events.
+
+Reconciliation (`MISSION_STATE_RECONCILED`) may set projected state to `COMPLETED` from `PLANNED`, `PAUSED`, or `BLOCKED` without passing through `ACTIVE`. That is not a `MISSION_TRANSITIONS` change. Terminal states are not casually rewritten.
 
 ## Feature states
 
@@ -108,4 +116,4 @@ A Session is one actor's continuous period of active work on one Mission.
 
 ## Projections
 
-Tables `clanks`, `missions`, `sessions`, `features`, `tasks`, `decisions`, `blockers`, `artifacts`, `relationships`, `checkpoints`, `census_candidates`, plus alias/ref tables, are derived. `clankctl rebuild` wipes and replays. Tests assert byte-for-byte deterministic rebuilt state.
+Tables `clanks`, `missions`, `sessions`, `features`, `tasks`, `decisions`, `blockers`, `artifacts`, `relationships`, `checkpoints`, `census_candidates`, `deployment_observations`, `agent_process_observations`, `mission_reconciliations`, `handoffs`, plus alias/ref tables, are derived. `clankctl rebuild` wipes and replays. Tests assert byte-for-byte deterministic rebuilt state.

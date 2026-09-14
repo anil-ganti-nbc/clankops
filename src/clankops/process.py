@@ -25,6 +25,7 @@ SESSION_OPEN = "OPEN"
 SESSION_CLOSED = "CLOSED"
 HANDOFF_MISSING = "MISSING"
 HANDOFF_RECORDED = "RECORDED"
+HANDOFF_UNKNOWN = "UNKNOWN"
 OBSERVED_HOW_PARENT_WAIT = "parent_wait"
 OBSERVED_HOW_SPAWN_EXCEPTION = "spawn_exception"
 RECORDER = "clankops.launch"
@@ -159,6 +160,26 @@ def observation_facts_for_clank(store: Store, clank_id: str) -> list[dict[str, A
     return [observation_facts(row) for row in observations_for_clank(store, clank_id)]
 
 
+def derive_handoff_status(store: Store, session: dict[str, Any]) -> str:
+    """Handoff is proven only by HANDOFF_RECORDED. Session close is not a handoff."""
+    if session.get("ended_utc") is None:
+        return HANDOFF_MISSING
+    session_id = str(session.get("session_id") or "")
+    if not session_id:
+        return HANDOFF_UNKNOWN
+    proof = store.conn.execute(
+        """
+        SELECT 1 FROM events
+        WHERE event_type = ? AND session_id = ?
+        LIMIT 1
+        """,
+        (str(EventType.HANDOFF_RECORDED), session_id),
+    ).fetchone()
+    if proof is None:
+        return HANDOFF_UNKNOWN
+    return HANDOFF_RECORDED
+
+
 def session_process_view(
     store: Store,
     session: dict[str, Any],
@@ -187,7 +208,7 @@ def session_process_view(
     return {
         "status": status,
         "session": SESSION_OPEN if open_ else SESSION_CLOSED,
-        "handoff": HANDOFF_MISSING if open_ else HANDOFF_RECORDED,
+        "handoff": derive_handoff_status(store, session),
         "kind": latest.get("kind") if latest else None,
         "exit_code": latest.get("exit_code") if latest else None,
         "error": latest.get("error") if latest else None,

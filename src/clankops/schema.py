@@ -341,9 +341,58 @@ CREATE INDEX idx_agent_process_session_seq
     ON agent_process_observations(session_id, ledger_seq);
 """,
     ),
+    (
+        7,
+        "foundation11_mission_reconciliations",
+        """
+CREATE TABLE mission_reconciliations (
+    reconciliation_id TEXT PRIMARY KEY,
+    mission_id TEXT NOT NULL,
+    clank_id TEXT,
+    from_state TEXT NOT NULL,
+    to_state TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    evidence_json TEXT NOT NULL,
+    evidence_occurred_at TEXT,
+    reconciliation_basis TEXT,
+    actor TEXT,
+    source TEXT,
+    observed_at TEXT NOT NULL,
+    ledger_seq INTEGER NOT NULL,
+    created_utc TEXT NOT NULL
+);
+
+CREATE INDEX idx_mission_reconciliations_mission_seq
+    ON mission_reconciliations(mission_id, ledger_seq);
+""",
+    ),
+    (
+        8,
+        "foundation11_handoffs",
+        """
+CREATE TABLE handoffs (
+    handoff_id TEXT PRIMARY KEY,
+    session_id TEXT,
+    mission_id TEXT NOT NULL,
+    clank_id TEXT,
+    to_state TEXT NOT NULL,
+    checkpoint_id TEXT,
+    actor TEXT,
+    source TEXT,
+    observed_at TEXT NOT NULL,
+    ledger_seq INTEGER NOT NULL,
+    created_utc TEXT NOT NULL
+);
+
+CREATE INDEX idx_handoffs_session_seq
+    ON handoffs(session_id, ledger_seq);
+""",
+    ),
 ]
 
 PROJECTION_TABLES = (
+    "handoffs",
+    "mission_reconciliations",
     "agent_process_observations",
     "deployment_observations",
     "census_candidates",

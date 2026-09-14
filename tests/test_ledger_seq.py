@@ -86,7 +86,7 @@ def test_v1_events_migrate_ledger_seq(tmp_path: Path) -> None:
     conn.close()
 
     conn = connect(db, clock=FrozenClock(FROZEN))
-    assert current_schema_version(conn) == 6
+    assert current_schema_version(conn) == 8
     rows = conn.execute(f"SELECT event_id, ledger_seq FROM events {LEDGER_ORDER_SQL}").fetchall()
     assert [r["ledger_seq"] for r in rows] == [1, 2]
     # F0 order was ts_utc, event_id: aaaa before bbbb
@@ -112,3 +112,45 @@ def test_copy_events_preserves_ledger_seq(tmp_path, store) -> None:
     ]
     assert dst_seqs == src_seqs
     other.conn.close()
+
+
+def test_concurrent_appends_mint_unique_ledger_seq(tmp_path: Path) -> None:
+    import threading
+
+    db = tmp_path / "conc-seq.db"
+    setup = open_store(db, actor="a")
+    setup.register_clank("oem-radar")
+    mission = setup.start_mission("oem-radar", "seq race")
+    setup.pause_mission(mission["display_id"])
+    setup.conn.close()
+    barrier = threading.Barrier(2)
+    errors: list[BaseException] = []
+
+    def run(actor: str) -> None:
+        store = open_store(db, actor=actor)
+        try:
+            barrier.wait(timeout=10)
+            store.add_task(mission["display_id"], f"task {actor}")
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            store.conn.close()
+
+    threads = [
+        threading.Thread(target=run, args=("cursor",)),
+        threading.Thread(target=run, args=("glm",)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+        assert not thread.is_alive()
+    assert errors == []
+    store = open_store(db, actor="a")
+    seqs = [
+        int(row[0])
+        for row in store.conn.execute("SELECT ledger_seq FROM events ORDER BY ledger_seq")
+    ]
+    assert seqs == list(range(1, len(seqs) + 1))
+    assert len(seqs) == len(set(seqs))
+    store.conn.close()

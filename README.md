@@ -12,7 +12,9 @@ Foundation 8 emits a **derived resume packet** so any development agent can ente
 
 Foundation 9 makes that prepare/admit contract the managed agent launch gate. Prepare, admit, then spawn. Actor and launcher names are provenance, not permission.
 
-Foundation 10 records **managed process exit** as immutable evidence. Process exit is not a handoff. An open Session after the child returns still needs Foundation 1 `handoff`.
+Foundation 10 records **managed process exit** as immutable evidence. Process exit is not a handoff. An open Session after the child returns still needs Foundation 1 `handoff`. Session close is not itself a recorded handoff.
+
+Foundation 11 adds **Mission state reconciliation**: an explicit, auditable correction of stale projected Mission state from evidence. It does not rewrite history, fabricate an ACTIVE interval, or auto-complete Missions from PR merges.
 
 ```text
 clankctl brief oem-radar
@@ -22,7 +24,7 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 10 (managed agent exit observability). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron. No remote SSH from ClankOps.
+Foundation 11 (Mission lifecycle reconciliation and control-plane consolidation). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron. No remote SSH from ClankOps.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 

@@ -245,6 +245,34 @@ def cmd_mission_transition(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mission_reconcile(args: argparse.Namespace) -> int:
+    from clankops.reconciliation import reconcile_mission
+
+    store = _store(args)
+    try:
+        result = reconcile_mission(
+            store,
+            args.mission,
+            to_state=args.to,
+            reason=args.reason,
+            evidence=args.evidence or [],
+            basis=args.basis,
+            actor=args.actor,
+            source=args.source,
+            evidence_occurred_at=args.evidence_occurred_at,
+        )
+    finally:
+        store.conn.close()
+    mission = result["mission"]
+    _print(
+        f"reconciled {mission['display_id']} {result['from_state']} -> {result['to_state']} "
+        f"(MISSION_STATE_RECONCILED)",
+        as_json=args.json,
+        payload=result,
+    )
+    return 0
+
+
 def _git_working_label(git: dict[str, Any]) -> str | None:
     if git.get("dirty") is True:
         return f"dirty ({git.get('dirty_count')} paths)"
@@ -1120,7 +1148,8 @@ def _format_session_row(row: dict[str, Any]) -> str:
         process_bit = " process=START_FAILED"
     else:
         process_bit = " process=UNKNOWN"
-    handoff = process.get("handoff") or ("MISSING" if row.get("open") else "RECORDED")
+    handoff = process.get("handoff") or ("MISSING" if row.get("open") else "UNKNOWN")
+    session_bit = process.get("session") or ("OPEN" if row.get("open") else "CLOSED")
     return (
         f"{row['session_id']} actor={row.get('actor') or 'unknown'} "
         f"clank={row.get('clank_slug') or 'unknown'} "
@@ -1131,7 +1160,7 @@ def _format_session_row(row: dict[str, Any]) -> str:
         f"branch={row.get('branch') or 'unknown'} "
         f"HEAD={row.get('head_short') or row.get('head') or 'unknown'} "
         f"next={row.get('next_action') or 'unknown'}"
-        f"{process_bit} handoff={handoff}"
+        f"{process_bit} session={session_bit} handoff={handoff}"
         f"{stale}{anomaly}"
     )
 
@@ -1524,6 +1553,27 @@ def build_parser() -> argparse.ArgumentParser:
         p = msub.add_parser(action)
         p.add_argument("mission")
         p.set_defaults(func=cmd_mission_transition)
+    p = msub.add_parser(
+        "reconcile",
+        help="correct projected Mission state from evidence (does not rewrite history)",
+    )
+    p.add_argument("mission")
+    p.add_argument("--to", required=True, help="target state (COMPLETED in this slice)")
+    p.add_argument("--reason", required=True)
+    p.add_argument(
+        "--evidence",
+        action="append",
+        default=[],
+        required=True,
+        help="repeatable evidence item, e.g. github:pr:6 or github:commit:<sha>",
+    )
+    p.add_argument("--evidence-occurred-at", dest="evidence_occurred_at")
+    p.add_argument(
+        "--basis",
+        required=True,
+        help="operator-confirmed, github, ci, deployment, reconstructed, local_git, artefact",
+    )
+    p.set_defaults(func=cmd_mission_reconcile)
 
     work = sub.add_parser("work", help="start or resume a Cursor development Session")
     wsub = work.add_subparsers(dest="work_action", required=True)
