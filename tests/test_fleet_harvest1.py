@@ -6,13 +6,13 @@ import json
 import os
 import subprocess
 import threading
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 from clankops.cli import main
-from clankops.clock import FrozenClock, TickingClock
+from clankops.clock import FrozenClock, TickingClock, isoformat_utc
 from clankops.enums import EventSource, EventType, MissionState
 from clankops.events import list_events
 from clankops.gitinspect import (
@@ -31,10 +31,15 @@ from clankops.harvest import (
     RESULT_NO_CANONICAL_PATH,
     RESULT_OBSERVED_CHANGED,
     RESULT_OBSERVED_UNCHANGED,
+    RESULT_STALE_OBSERVATION,
+    WRITE_CHANGED,
+    WRITE_STALE,
+    _record_state_observation,
     checkout_key_for_path,
     format_harvest_text,
     harvest_local_git,
     local_git_harvest_view,
+    semantic_state_payload,
     state_fingerprint,
 )
 from clankops.projections import dump_projection_state, rebuild_projections
@@ -518,6 +523,22 @@ def test_windows_path_and_detached_and_missing_git(tmp_path: Path, repo: Path) -
     store.conn.close()
 
 
+class _SharedClock:
+    def __init__(self, instant: datetime) -> None:
+        if instant.tzinfo is None:
+            raise ValueError("clock instants must be timezone-aware UTC")
+        self._instant = instant.astimezone(timezone.utc)
+        self._lock = threading.Lock()
+
+    def now(self) -> datetime:
+        with self._lock:
+            return self._instant
+
+    def advance(self, delta: timedelta) -> None:
+        with self._lock:
+            self._instant = self._instant + delta
+
+
 HEAD_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 HEAD_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
@@ -604,42 +625,75 @@ def test_observer_baseexception_is_not_swallowed(tmp_path: Path, repo: Path) -> 
 
 
 def test_concurrent_stale_writer_does_not_replace_newer_state(tmp_path: Path, repo: Path) -> None:
-    db = tmp_path / "stale.db"
+    _run_divergent_observation_race(tmp_path, repo, newer_commits_first=True)
+
+
+def test_concurrent_newer_observation_appends_after_older_commit(tmp_path: Path, repo: Path) -> None:
+    _run_divergent_observation_race(tmp_path, repo, newer_commits_first=False)
+
+
+def _run_divergent_observation_race(
+    tmp_path: Path,
+    repo: Path,
+    *,
+    newer_commits_first: bool,
+) -> None:
+    db = tmp_path / ("race-newer-first.db" if newer_commits_first else "race-older-first.db")
+    clock = _SharedClock(T0)
     setup = open_store(db, actor="cursor", clock=FrozenClock(T0))
     _seed(setup, path=str(repo))
     setup.conn.close()
-    a_inspecting = threading.Event()
+    a_observed = threading.Event()
+    b_observed = threading.Event()
+    a_committed = threading.Event()
     b_committed = threading.Event()
     lock = threading.Lock()
     errors: list[BaseException] = []
     outcomes: dict[str, dict] = {}
 
     def observe_a(path, timeout=None):
-        a_inspecting.set()
-        assert b_committed.wait(timeout=15)
         return _ok_observe(HEAD_A)
 
     def observe_b(path, timeout=None):
-        assert a_inspecting.wait(timeout=15)
+        assert a_observed.wait(timeout=15)
+        clock.advance(timedelta(seconds=1))
         return _ok_observe(HEAD_B)
 
-    def worker(name: str, observe) -> None:
-        store = open_store(db, actor="cursor")
+    def before_a() -> None:
+        a_observed.set()
+        if newer_commits_first:
+            assert b_committed.wait(timeout=15)
+        else:
+            assert b_observed.wait(timeout=15)
+
+    def before_b() -> None:
+        b_observed.set()
+        if not newer_commits_first:
+            assert a_committed.wait(timeout=15)
+
+    def worker(name: str, observe, before_record) -> None:
+        store = open_store(db, actor="cursor", clock=clock)
         try:
-            result = harvest_local_git(store, "oem-radar", observe=observe)
+            result = harvest_local_git(
+                store,
+                "oem-radar",
+                observe=observe,
+                before_record=before_record,
+            )
             with lock:
                 outcomes[name] = result
-            if name == "b":
-                b_committed.set()
         except BaseException as exc:  # noqa: BLE001 — collect for assertion
             with lock:
                 errors.append(exc)
-            b_committed.set()
         finally:
+            if name == "a":
+                a_committed.set()
+            else:
+                b_committed.set()
             store.conn.close()
 
-    thread_a = threading.Thread(target=worker, args=("a", observe_a))
-    thread_b = threading.Thread(target=worker, args=("b", observe_b))
+    thread_a = threading.Thread(target=worker, args=("a", observe_a, before_a))
+    thread_b = threading.Thread(target=worker, args=("b", observe_b, before_b))
     thread_a.start()
     thread_b.start()
     for thread in (thread_a, thread_b):
@@ -647,17 +701,73 @@ def test_concurrent_stale_writer_does_not_replace_newer_state(tmp_path: Path, re
         assert not thread.is_alive()
     assert errors == []
     assert outcomes["b"]["observed_changed"] == 1
-    assert outcomes["a"]["errors"] == 1
-    assert outcomes["a"]["results"][0]["result"] == RESULT_ERROR
     store = open_store(db, actor="cursor")
     observed = _events(store, EventType.LOCAL_GIT_STATE_OBSERVED)
     runs = _events(store, EventType.LOCAL_GIT_HARVEST_COMPLETED)
-    assert len(observed) == 1
-    assert observed[0].payload["head"] == HEAD_B
+    assert observed[-1].payload["head"] == HEAD_B
     assert local_git_harvest_view(store, "oem-radar")["semantic_state"]["head"] == HEAD_B
     assert len(runs) == 2
     seqs = [event.ledger_seq for event in list_events(store.conn)]
     assert len(seqs) == len(set(seqs))
+    if newer_commits_first:
+        assert outcomes["a"]["errors"] == 1
+        assert outcomes["a"]["results"][0]["result"] == RESULT_STALE_OBSERVATION
+        assert len(observed) == 1
+    else:
+        assert outcomes["a"]["observed_changed"] == 1
+        assert len(observed) == 2
+        assert observed[0].payload["head"] == HEAD_A
+        assert observed[0].payload["observed_at"] < observed[1].payload["observed_at"]
+    store.conn.close()
+
+
+def test_tied_observation_time_fails_closed(tmp_path: Path, repo: Path) -> None:
+    store = open_store(tmp_path / "tie.db", actor="cursor", clock=FrozenClock(T0))
+    _seed(store, path=str(repo))
+    harvest_local_git(store, "oem-radar", observe=lambda path, timeout=None: _ok_observe(HEAD_A))
+    view = local_git_harvest_view(store, "oem-radar")
+    payload = semantic_state_payload(
+        clank_id=view["clank_id"],
+        checkout_key=view["checkout_key"],
+        checkout_path=view["checkout_path"],
+        observed=_ok_observe(HEAD_B)["state"],
+    )
+    outcome, event = _record_state_observation(
+        store,
+        actor="cursor",
+        payload=payload,
+        fingerprint=state_fingerprint(payload),
+        observed_at=view["state_observed_at"],
+        expected_generation=0,
+    )
+    assert outcome == WRITE_STALE
+    assert event is None
+    assert local_git_harvest_view(store, "oem-radar")["semantic_state"]["head"] == HEAD_A
+    store.conn.close()
+
+
+def test_newer_observation_time_appends_after_older_commit(tmp_path: Path, repo: Path) -> None:
+    store = open_store(tmp_path / "newer.db", actor="cursor", clock=FrozenClock(T0))
+    _seed(store, path=str(repo))
+    harvest_local_git(store, "oem-radar", observe=lambda path, timeout=None: _ok_observe(HEAD_A))
+    view = local_git_harvest_view(store, "oem-radar")
+    payload = semantic_state_payload(
+        clank_id=view["clank_id"],
+        checkout_key=view["checkout_key"],
+        checkout_path=view["checkout_path"],
+        observed=_ok_observe(HEAD_B)["state"],
+    )
+    outcome, event = _record_state_observation(
+        store,
+        actor="cursor",
+        payload=payload,
+        fingerprint=state_fingerprint(payload),
+        observed_at=isoformat_utc(T0 + timedelta(seconds=1)),
+        expected_generation=0,
+    )
+    assert outcome == WRITE_CHANGED
+    assert event is not None
+    assert local_git_harvest_view(store, "oem-radar")["semantic_state"]["head"] == HEAD_B
     store.conn.close()
 
 

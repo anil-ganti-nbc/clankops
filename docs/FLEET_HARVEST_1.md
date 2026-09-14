@@ -63,11 +63,15 @@ The ledger is institutional memory, not a debug logfile. An hourly walk
 of 18 unchanged repositories must not mint 18 duplicate state events.
 
 Harvesters record the latest observation generation, inspect **without**
-a SQLite write lock, then `BEGIN IMMEDIATE` and re-read generation plus
-fingerprint. Identical fingerprints dedup. If a newer observation landed
-while inspection was running, the stale write is discarded — it never
-becomes current by later `ledger_seq`. Each invocation still gets its
-own harvest-run record.
+a SQLite write lock, stamp `observed_at` when inspection completes, then
+`BEGIN IMMEDIATE` and re-read generation plus fingerprint. Identical
+fingerprints dedup. `ledger_seq` detects that another writer landed; it
+does not decide which Git observation is newer. If fingerprints differ
+after a concurrent write, `observed_at` is compared. A strictly newer
+incoming observation is appended even if it acquired the write lock
+second. An older, tied, or unorderable incoming observation is discarded
+as `STALE_OBSERVATION`. Each invocation still gets its own harvest-run
+record.
 
 ## Harvest-run evidence
 
@@ -161,6 +165,7 @@ target; process-wide `BaseException` classes are not swallowed.
 | `NOT_A_GIT_REPOSITORY` | path exists but is not a Git work tree |
 | `TIMEOUT` | a Git invocation timed out |
 | `ERROR` | other inspection failure (including missing Git binary) |
+| `STALE_OBSERVATION` | concurrent older observation discarded; Git inspect succeeded |
 
 These are harvest results. They are not Clank health.
 
@@ -209,7 +214,7 @@ ephemeral.
 | Code | Meaning |
 | --- | --- |
 | 0 | harvest invocation completed; no hard target errors |
-| 1 | harvest completed, but one or more targets had hard errors/timeouts (`TIMEOUT`, `ERROR`, `AMBIGUOUS_CANONICAL_PATH`) |
+| 1 | harvest completed, but one or more targets had hard errors/timeouts (`TIMEOUT`, `ERROR`, `AMBIGUOUS_CANONICAL_PATH`, `STALE_OBSERVATION`) |
 | 2 | invocation/validation/control-plane failure (unknown Clank, usage) |
 
 `NO_CANONICAL_PATH` is reported as a skip and does not by itself force

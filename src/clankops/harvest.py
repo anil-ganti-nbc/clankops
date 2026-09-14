@@ -35,12 +35,14 @@ RESULT_OBSERVED_CHANGED = "OBSERVED_CHANGED"
 RESULT_OBSERVED_UNCHANGED = "OBSERVED_UNCHANGED"
 RESULT_NO_CANONICAL_PATH = "NO_CANONICAL_PATH"
 RESULT_AMBIGUOUS_CANONICAL_PATH = "AMBIGUOUS_CANONICAL_PATH"
+RESULT_STALE_OBSERVATION = "STALE_OBSERVATION"
 
 HARD_ERRORS = frozenset(
     {
         RESULT_TIMEOUT,
         RESULT_ERROR,
         RESULT_AMBIGUOUS_CANONICAL_PATH,
+        RESULT_STALE_OBSERVATION,
         "GIT_MISSING",
     }
 )
@@ -54,7 +56,7 @@ FAILURE_EVIDENCE = frozenset(
         RESULT_NOT_A_GIT_REPOSITORY,
         RESULT_AMBIGUOUS_CANONICAL_PATH,
         "GIT_MISSING",
-        "STALE_OBSERVATION",
+        RESULT_STALE_OBSERVATION,
     }
 )
 WRITE_CHANGED = "changed"
@@ -225,6 +227,26 @@ def _observation_generation(row: dict[str, Any] | None) -> int:
     return int(row.get("ledger_seq") or 0)
 
 
+def _incoming_observation_is_newer(incoming_at: str, latest_at: str | None) -> bool | None:
+    """Compare workspace observation times. True/False, or None if unordered.
+
+    `ledger_seq` is not used. Ties and unparseable timestamps are ambiguous.
+    """
+    incoming = parse_utc(incoming_at)
+    if incoming is None:
+        return None
+    if not latest_at:
+        return True
+    latest = parse_utc(latest_at)
+    if latest is None:
+        return None
+    if incoming > latest:
+        return True
+    if incoming < latest:
+        return False
+    return None
+
+
 def _record_state_observation(
     store: Store,
     *,
@@ -234,7 +256,12 @@ def _record_state_observation(
     observed_at: str,
     expected_generation: int,
 ) -> tuple[str, Any]:
-    """Lock, re-read generation/fingerprint, maybe append. Never write stale state."""
+    """Lock, re-read fingerprint/generation, maybe append.
+
+    Current semantic state follows observation time, not lock order.
+    `ledger_seq` only detects that another writer landed, not which Git
+    observation is newer.
+    """
     clank_id = payload["clank_id"]
     checkout_key = payload["checkout_key"]
     store._begin_immediate()
@@ -245,8 +272,12 @@ def _record_state_observation(
             store.commit()
             return WRITE_UNCHANGED, None
         if generation != expected_generation:
-            store.commit()
-            return WRITE_STALE, None
+            newer = _incoming_observation_is_newer(
+                observed_at, latest.get("observed_at") if latest else None
+            )
+            if newer is not True:
+                store.commit()
+                return WRITE_STALE, None
         observation_id = new_id()
         event = store._emit(
             EventType.LOCAL_GIT_STATE_OBSERVED,
@@ -280,10 +311,13 @@ def harvest_local_git(
     observe: ObserveFn | None = None,
     timeout: float | int | None = GIT_TIMEOUT_SEC,
     git_available: bool | None = None,
+    before_record: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Walk registered Clanks and record local Git evidence.
 
     Dry-run inspects and reports but writes zero events or projections.
+    `before_record`, if provided, runs after `observed_at` is stamped and
+    before the SQLite write lock. Git inspection does not hold that lock.
     """
     observer = (actor or store.default_actor or "").strip() or "harvest"
     run_id = new_id()
@@ -368,6 +402,8 @@ def harvest_local_git(
             row["changed"] = would_change
             row["result"] = RESULT_OBSERVED_CHANGED if would_change else RESULT_OBSERVED_UNCHANGED
         else:
+            if before_record is not None:
+                before_record()
             outcome, event = _record_state_observation(
                 store,
                 actor=observer,
@@ -377,8 +413,8 @@ def harvest_local_git(
                 expected_generation=expected_generation,
             )
             if outcome == WRITE_STALE:
-                row["result"] = RESULT_ERROR
-                row["detail"] = "stale local git observation discarded"
+                row["result"] = RESULT_STALE_OBSERVATION
+                row["detail"] = "superseded by a concurrent newer observation"
                 errors += 1
                 results.append(row)
                 continue
@@ -525,6 +561,10 @@ def format_harvest_text(payload: dict[str, Any]) -> str:
             lines.append(f"{'NOTGIT':<10} {slug:<16} not a git repository")
         elif result == RESULT_TIMEOUT:
             lines.append(f"{'ERROR':<10} {slug:<16} git inspection timed out")
+        elif result == RESULT_STALE_OBSERVATION:
+            lines.append(
+                f"{'STALE':<10} {slug:<16} superseded by a concurrent newer observation"
+            )
         else:
             detail = row.get("detail") or "git inspection failed"
             lines.append(f"{'ERROR':<10} {slug:<16} {detail}")

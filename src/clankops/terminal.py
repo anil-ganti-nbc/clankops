@@ -68,7 +68,7 @@ def _local_git_harvest_html(view: dict[str, Any]) -> str:
     if latest in {"TIMEOUT"}:
         css = "harvest-timeout"
         status = "TIMEOUT"
-    elif latest in {"ERROR", "AMBIGUOUS_CANONICAL_PATH"}:
+    elif latest in {"ERROR", "AMBIGUOUS_CANONICAL_PATH", "STALE_OBSERVATION"}:
         css = "harvest-error"
         status = latest
     elif latest in {"PATH_MISSING", "NOT_A_GIT_REPOSITORY"}:
@@ -88,7 +88,7 @@ def _local_git_harvest_html(view: dict[str, Any]) -> str:
         tree = "unknown"
     worktrees = state.get("worktrees") or []
     last_state_note = ""
-    if latest in {"TIMEOUT", "ERROR", "PATH_MISSING", "NOT_A_GIT_REPOSITORY"} and state:
+    if latest in {"TIMEOUT", "ERROR", "PATH_MISSING", "NOT_A_GIT_REPOSITORY", "STALE_OBSERVATION"} and state:
         last_state_note = (
             f"<tr><th>last state</th><td>{html.escape(str(branch))} / "
             f"{html.escape(str(head))} / {html.escape(tree)}</td></tr>"
