@@ -41,7 +41,11 @@ python -m clankops --actor cursor agent prepare oem-radar --no-github
 python -m clankops --actor cursor agent admit oem-radar --mission COPS-000003
 ```
 
-`agent prepare` writes zero events. Several unfinished Missions are `AMBIGUOUS`; none is `NO_UNFINISHED_MISSION` (use `work start` for a new objective). `agent admit` never creates a Mission. See [Foundation 8](FOUNDATION_8.md).
+`agent prepare` writes zero events. Several unfinished Missions are `AMBIGUOUS`; none is `NO_UNFINISHED_MISSION` (use `work start` for a new objective). `agent admit` never creates a Mission. Managed agent start uses `agent launch` (prepare + admit + spawn). If that actor already has an open Session on the Mission, launch refuses; handoff or end it first. See [Foundation 8](FOUNDATION_8.md) and [Foundation 9](FOUNDATION_9.md).
+
+```text
+python -m clankops --actor cursor agent launch oem-radar --launcher cursor --no-github --command <agent argv...>
+```
 
 ## Stop / handoff
 
@@ -63,6 +67,10 @@ One command checkpoints (with local git capture), then sets Mission state. Sessi
 | `CLANKOPS_MISSION_DISPLAY` | `COPS-000123` |
 | `CLANKOPS_SESSION_ID` | Open Session UUID |
 | `CLANKOPS_CONTEXT_FILE` | This Clank's `contexts\<clank-id>.json` |
+| `CLANKOPS_CLANK` | Slug alias of `CLANKOPS_CLANK_SLUG` |
+| `CLANKOPS_MISSION` | Display-id alias of `CLANKOPS_MISSION_DISPLAY` |
+| `CLANKOPS_LAUNCHER` | Launcher identity (provenance, not permission) |
+| `CLANKOPS_CONTEXT_FINGERPRINT` | Resume-packet fingerprint acknowledged at admission |
 | `CLANKOPS_CLANK_PATH` | Canonical local checkout for LaunchCursor / identity |
 | `CLANKOPS_HOME` | Override directory for context files (tests). Not the git checkout. |
 | `CLANKOPS_ROOT` | Git checkout of clankops (PowerShell launcher / `PYTHONPATH`) |

@@ -128,8 +128,7 @@ def coverage_report(store: Store, census: dict[str, Any]) -> dict[str, Any]:
 
 def _session_rows(store: Store, *, open_only: bool = True) -> list[dict[str, Any]]:
     sql = """
-        SELECT s.session_id, s.clank_id, s.mission_id, s.actor, s.started_utc, s.ended_utc,
-               c.slug AS clank_slug, c.display_name AS clank_name,
+        SELECT s.*, c.slug AS clank_slug, c.display_name AS clank_name,
                m.display_id AS mission_display, m.state AS mission_state, m.objective AS mission_objective
         FROM sessions s
         LEFT JOIN clanks c ON c.clank_id = s.clank_id
@@ -176,6 +175,9 @@ def observe_session(
     return {
         "session_id": row["session_id"],
         "actor": row.get("actor"),
+        "launcher": row.get("launcher"),
+        "context_fingerprint": row.get("context_fingerprint"),
+        "source": row.get("source"),
         "clank_id": row.get("clank_id"),
         "clank_slug": row.get("clank_slug"),
         "clank_name": row.get("clank_name"),

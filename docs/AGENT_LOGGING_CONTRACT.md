@@ -40,6 +40,7 @@ Foundation 0/0.1 is the ledger. Foundation 1 makes Cursor adoption operational v
 ```text
 python -m clankops --actor cursor resume-packet <clank>
 python -m clankops --actor cursor agent prepare <clank>
+python -m clankops --actor cursor agent launch <clank> --launcher cursor --command <argv...>
 python -m clankops --actor cursor brief <clank>
 python -m clankops --actor cursor work resume <clank>
 # or, after an explicit Mission choice:

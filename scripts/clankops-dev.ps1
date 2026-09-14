@@ -6,7 +6,7 @@
 # Use -Database (not -Db): -Db collides with PowerShell -Debug.
 
 param(
-    [ValidateSet("resume", "start", "handoff", "env", "brief", "packet", "prepare", "admit")]
+    [ValidateSet("resume", "start", "handoff", "env", "brief", "packet", "prepare", "admit", "launch")]
     [string]$Command = "resume",
 
     [string]$Target,
@@ -25,6 +25,8 @@ param(
     [string]$CursorCommand,
     [string]$Mission,
     [string]$ExpectContext,
+    [string]$Launcher,
+    [string[]]$AgentCommand,
     [switch]$Json,
     [switch]$NoGithub,
     [switch]$LaunchCursor
@@ -99,6 +101,10 @@ function Import-ClankOpsPayloadEnv {
         CLANKOPS_SESSION_ID = @(Get-ClankOpsJsonValue $Payload.env "CLANKOPS_SESSION_ID"; Get-ClankOpsJsonValue $Payload "session_id")
         CLANKOPS_CLANK_PATH = @(Get-ClankOpsJsonValue $Payload.env "CLANKOPS_CLANK_PATH"; Get-ClankOpsJsonValue $Payload "local_path")
         CLANKOPS_CONTEXT_FILE = @(Get-ClankOpsJsonValue $Payload.env "CLANKOPS_CONTEXT_FILE"; Get-ClankOpsJsonValue $Payload "context_file")
+        CLANKOPS_CLANK = @(Get-ClankOpsJsonValue $Payload.env "CLANKOPS_CLANK"; Get-ClankOpsJsonValue $Payload "clank_slug")
+        CLANKOPS_MISSION = @(Get-ClankOpsJsonValue $Payload.env "CLANKOPS_MISSION"; Get-ClankOpsJsonValue $Payload "mission_display")
+        CLANKOPS_LAUNCHER = @(Get-ClankOpsJsonValue $Payload.env "CLANKOPS_LAUNCHER"; Get-ClankOpsJsonValue $Payload "launcher")
+        CLANKOPS_CONTEXT_FINGERPRINT = @(Get-ClankOpsJsonValue $Payload.env "CLANKOPS_CONTEXT_FINGERPRINT"; Get-ClankOpsJsonValue $Payload "context_fingerprint")
     }
     foreach ($name in $pairs.Keys) {
         $val = $null
@@ -122,7 +128,11 @@ function Clear-ClankOpsActiveEnv {
         "CLANKOPS_CLANK_ID",
         "CLANKOPS_CLANK_SLUG",
         "CLANKOPS_CLANK_PATH",
-        "CLANKOPS_CONTEXT_FILE"
+        "CLANKOPS_CONTEXT_FILE",
+        "CLANKOPS_CLANK",
+        "CLANKOPS_MISSION",
+        "CLANKOPS_LAUNCHER",
+        "CLANKOPS_CONTEXT_FINGERPRINT"
     )) {
         Remove-Item "Env:$name" -ErrorAction SilentlyContinue
     }
@@ -234,6 +244,39 @@ switch ($Command) {
         }
         else {
             Write-Output $result.Text
+        }
+    }
+    "launch" {
+        if (-not $Target) {
+            Write-ClankOpsFailure "launch requires a Clank slug." ".\scripts\clankops-dev.ps1 launch oem-radar -AgentCommand python,-c,'pass'"
+            $code = 2
+            break
+        }
+        if (-not $AgentCommand -or @($AgentCommand).Count -eq 0) {
+            Write-ClankOpsFailure "launch requires -AgentCommand as an argument array; refusing to admit without a process." ".\scripts\clankops-dev.ps1 launch oem-radar -AgentCommand python,-c,'pass'"
+            $code = 2
+            break
+        }
+        if (-not $Launcher) { $Launcher = $Actor }
+        $p = @("agent", "launch", $Target, "--actor", $Actor, "--launcher", $Launcher) + $githubFlags
+        if ($Mission) { $p += @("--mission", $Mission) }
+        if ($ExpectContext) { $p += @("--expect-context", $ExpectContext) }
+        $p += @("--command") + @($AgentCommand)
+        $result = Invoke-ClankOpsJson ($cli + @("--json") + $p)
+        $code = $result.Code
+        if ($code -ne 0 -and -not $result.Text) {
+            Write-Host $result.Text
+            break
+        }
+        if ($result.Text) {
+            try {
+                $payload = $result.Text | ConvertFrom-Json
+                Import-ClankOpsPayloadEnv $payload
+                Write-Host "launched $($payload.mission) session=$($payload.session_id) launcher=$($payload.launcher) exit=$($payload.exit_code)"
+                if ($Json) { Write-Output $result.Text }
+            } catch {
+                Write-Host $result.Text
+            }
         }
     }
     "env" {

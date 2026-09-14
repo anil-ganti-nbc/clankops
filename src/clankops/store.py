@@ -577,6 +577,8 @@ class Store:
         actor: str | None = None,
         source: str | EventSource | None = None,
         commit: bool = True,
+        launcher: str | None = None,
+        context_fingerprint: str | None = None,
     ) -> dict[str, Any]:
         row = self.resolve_mission(mission)
         if row["state"] != MissionState.ACTIVE:
@@ -585,14 +587,25 @@ class Store:
             )
         session_id = new_id()
         actor = actor or self.default_actor
+        payload: dict[str, Any] = {"actor": actor}
+        provenance: dict[str, Any] = {"recorder": "clankops.store"}
+        launcher_id = (launcher or "").strip() or None
+        fingerprint = (context_fingerprint or "").strip() or None
+        if launcher_id:
+            payload["launcher"] = launcher_id
+            provenance["launcher"] = launcher_id
+        if fingerprint:
+            payload["context_fingerprint"] = fingerprint
+            provenance["context_fingerprint"] = fingerprint
         self._emit(
             EventType.SESSION_STARTED,
-            {"actor": actor},
+            payload,
             actor=actor,
             source=source,
             clank_id=row["clank_id"],
             mission_id=row["mission_id"],
             session_id=session_id,
+            provenance=provenance,
             bind_session=False,
         )
         if commit:
@@ -671,6 +684,7 @@ class Store:
         superseded_by: str | None = None,
         reason: str | None = None,
         source: str | EventSource | None = None,
+        commit: bool = True,
     ) -> dict[str, Any]:
         row = self.resolve_mission(mission)
         current = MissionState(row["state"])
@@ -702,7 +716,8 @@ class Store:
             mission_id=row["mission_id"],
             bind_session=False,
         )
-        self.commit()
+        if commit:
+            self.commit()
         return self.resolve_mission(row["mission_id"])
 
     def pause_mission(self, mission: str, **kwargs: Any) -> dict[str, Any]:
@@ -726,6 +741,8 @@ class Store:
             row["mission_id"],
             actor=actor,
             source=source,
+            launcher=kwargs.get("launcher"),
+            context_fingerprint=kwargs.get("context_fingerprint"),
         )
         result["session_id"] = session["session_id"]
         return result
@@ -1476,6 +1493,8 @@ class Store:
         *,
         actor: str | None = None,
         source: str | EventSource | None = None,
+        launcher: str | None = None,
+        context_fingerprint: str | None = None,
     ) -> dict[str, Any]:
         """Resume an existing Mission into an open Session for this actor."""
         row = self.resolve_mission(mission)
@@ -1485,7 +1504,13 @@ class Store:
                 f"mission {row['display_id']} is {row['state']}; start a new Mission instead of resuming"
             )
         if row["state"] in {MissionState.PAUSED, MissionState.BLOCKED, MissionState.PLANNED}:
-            result = self.resume_mission(row["mission_id"], actor=actor, source=source)
+            result = self.resume_mission(
+                row["mission_id"],
+                actor=actor,
+                source=source,
+                launcher=launcher,
+                context_fingerprint=context_fingerprint,
+            )
             session = self.resolve_session(result["session_id"])
             return {"mission": result, "session": session}
         existing = self.resolve_active_session(
@@ -1496,8 +1521,102 @@ class Store:
         if existing:
             session = self.resolve_session(existing)
         else:
-            session = self.start_session(row["mission_id"], actor=actor, source=source)
+            session = self.start_session(
+                row["mission_id"],
+                actor=actor,
+                source=source,
+                launcher=launcher,
+                context_fingerprint=context_fingerprint,
+            )
         return {"mission": self.resolve_mission(row["mission_id"]), "session": session}
+
+    def _begin_immediate(self) -> None:
+        """Take a reserved write lock so check-and-create cannot interleave."""
+        if self.conn.in_transaction:
+            self.conn.commit()
+        self.conn.execute("BEGIN IMMEDIATE")
+
+    def start_fresh_launch_session(
+        self,
+        mission: str,
+        *,
+        actor: str,
+        source: str | EventSource | None = None,
+        launcher: str | None = None,
+        context_fingerprint: str | None = None,
+    ) -> dict[str, Any]:
+        """Atomically create a Session for this Mission+actor, or fail.
+
+        Never reuses an open Session. Never mutates existing provenance.
+        Freshness is this Session's own SESSION_STARTED event, not a
+        fleet-wide event count.
+        """
+        actor = (actor or "").strip()
+        if not actor:
+            raise ValidationError("actor is required (metadata, not a permission)")
+        self._begin_immediate()
+        try:
+            row = self.resolve_mission(mission)
+            if row["state"] in {
+                MissionState.COMPLETED,
+                MissionState.ABANDONED,
+                MissionState.SUPERSEDED,
+            }:
+                raise InvalidTransitionError(
+                    f"mission {row['display_id']} is {row['state']}; "
+                    "start a new Mission instead of launching"
+                )
+            existing = [
+                r["session_id"]
+                for r in self.conn.execute(
+                    """
+                    SELECT session_id FROM sessions
+                    WHERE mission_id = ? AND actor = ? AND ended_utc IS NULL
+                    ORDER BY started_utc, session_id
+                    """,
+                    (row["mission_id"], actor),
+                )
+            ]
+            if existing:
+                listed = ", ".join(existing)
+                raise ValidationError(
+                    f"open Session already exists for actor {actor} on {row['display_id']}: {listed}. "
+                    "Handoff or end that Session through Foundation 1 before another managed launch. "
+                    "Refusing to reuse a Session that would not carry this launch's provenance."
+                )
+            if row["state"] in {
+                MissionState.PAUSED,
+                MissionState.BLOCKED,
+                MissionState.PLANNED,
+            }:
+                self.transition_mission(
+                    row["mission_id"],
+                    MissionState.ACTIVE,
+                    actor=actor,
+                    source=source,
+                    commit=False,
+                )
+            session = self.start_session(
+                row["mission_id"],
+                actor=actor,
+                source=source,
+                launcher=launcher,
+                context_fingerprint=context_fingerprint,
+                commit=False,
+            )
+            self.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        return {
+            "mission": self.resolve_mission(row["mission_id"]),
+            "session": dict(
+                self.conn.execute(
+                    "SELECT * FROM sessions WHERE session_id = ?",
+                    (session["session_id"],),
+                ).fetchone()
+            ),
+        }
 
     def handoff_mission(
         self,

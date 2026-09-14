@@ -10,6 +10,8 @@ Foundation 7 derives an **attention** queue from that evidence: what you are in 
 
 Foundation 8 emits a **derived resume packet** so any development agent can enter an existing Clank without the original chat. Admission never creates a Mission. The packet is not an LLM summary.
 
+Foundation 9 makes that prepare/admit contract the managed agent launch gate. Prepare, admit, then spawn. Actor and launcher names are provenance, not permission.
+
 ```text
 clankctl brief oem-radar
 ```
@@ -18,7 +20,7 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 8 (derived resume packets + agent admission). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron. No remote SSH from ClankOps.
+Foundation 9 (launcher admission gate). Local-first Python 3.14+ + SQLite. Read-only localhost Terminal. No production deployment. No cron. No remote SSH from ClankOps.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 
@@ -72,6 +74,7 @@ python -m clankops --json attention
 python -m clankops --json attention clankops --no-github
 python -m clankops --json resume-packet clankops --no-github
 python -m clankops --json agent prepare clankops --actor cursor --no-github
+python -m clankops --json agent launch clankops --actor cursor --launcher cursor --no-github --command python -c "pass"
 python -m clankops terminal
 ```
 
@@ -92,6 +95,7 @@ The Terminal is localhost-only and read-only. It does not schedule collection or
 - [Foundation 6 deployment provenance](docs/FOUNDATION_6.md)
 - [Foundation 7 attention queue](docs/FOUNDATION_7.md)
 - [Foundation 8 resume packets](docs/FOUNDATION_8.md)
+- [Foundation 9 launcher admission](docs/FOUNDATION_9.md)
 - [Future scope](docs/FUTURE_SCOPE.md)
 
 ## Tests

@@ -101,12 +101,13 @@ reuses it when deriving Attention for that Clank. Standalone
 Thin examples in `examples/agents/` consume the same CLI/JSON contract.
 They do not modify Cursor, Codex, GLM, or Grok. They do not add credentials.
 
-`scripts/clankops-dev.ps1` may run `packet`, `prepare`, and `admit` as a thin
-wrapper around the same commands.
+`scripts/clankops-dev.ps1` may run `packet`, `prepare`, `admit`, and `launch`
+as a thin wrapper around the same commands. Classification stays in Python.
+See [Foundation 9](FOUNDATION_9.md).
 
 ## Out of scope
 
-- Foundation 9
+- Foundation 10
 - LLM summarisation
 - A Clank health score
 - Mutating product-Clank repositories

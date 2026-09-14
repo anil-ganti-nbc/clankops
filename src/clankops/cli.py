@@ -866,6 +866,7 @@ def cmd_agent(args: argparse.Namespace) -> int:
                 actor=actor,
                 expect_context=getattr(args, "expect_context", None),
                 source=args.source,
+                launcher=getattr(args, "launcher", None),
                 include_github=not args.no_github,
             )
             ctx = _persist_work_context(
@@ -877,6 +878,7 @@ def cmd_agent(args: argparse.Namespace) -> int:
             **ctx,
             "admitted": True,
             "requested_actor": result["requested_actor"],
+            "launcher": result.get("launcher"),
             "context_fingerprint": result["context_fingerprint"],
             "expect_context": result["expect_context"],
             "packet": result["packet"],
@@ -890,6 +892,43 @@ def cmd_agent(args: argparse.Namespace) -> int:
             payload=payload,
         )
         return 0
+    if action == "launch":
+        from clankops.launch import launch_agent
+
+        command = list(getattr(args, "agent_command", None) or [])
+        launcher = (getattr(args, "launcher", None) or actor or "").strip()
+        args.actor = actor
+        store = _store(args)
+        try:
+            result = launch_agent(
+                store,
+                args.clank,
+                actor=actor,
+                launcher=launcher,
+                command=command,
+                mission=getattr(args, "mission", None),
+                expect_context=getattr(args, "expect_context", None),
+                source=args.source,
+                include_github=not args.no_github,
+                db=str(args.db),
+            )
+            session = store.resolve_session(result["session_id"])
+            mission = store.resolve_mission(result["mission_id"])
+            ctx = _persist_work_context(store, args, mission, session)
+        finally:
+            store.conn.close()
+        merged = {**(ctx.get("env") or {}), **(result.get("env") or {})}
+        payload = {**ctx, **{k: v for k, v in result.items() if k != "env"}, "env": merged}
+        _print(
+            f"launched {result['mission']} session={result['session_id']} "
+            f"actor={result['requested_actor']} launcher={result['launcher']} "
+            f"exit={result['exit_code']}\n"
+            f"Context: {result['context_fingerprint']}\n"
+            + format_powershell_env(ctx),
+            as_json=args.json,
+            payload=payload,
+        )
+        return int(result.get("exit_code") or 0)
     raise ClankOpsError(f"unknown agent action {action}")
 
 
@@ -1247,7 +1286,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     agent = sub.add_parser(
         "agent",
-        help="prepare a resume packet or admit an agent to an explicit Mission",
+        help="prepare, admit, or launch an agent through the Foundation 8/9 gate",
     )
     asub = agent.add_subparsers(dest="agent_action", required=True)
     p = asub.add_parser(
@@ -1281,6 +1320,46 @@ def build_parser() -> argparse.ArgumentParser:
         "--expect-context",
         default=None,
         help="fail if current packet fingerprint no longer matches (stale-context detection)",
+    )
+    p.add_argument(
+        "--launcher",
+        default=None,
+        help="launcher identity (provenance, not a permission); optional on raw admit",
+    )
+    p.add_argument("--no-github", action="store_true", help="skip gh; local git only")
+    p.set_defaults(func=cmd_agent)
+    p = asub.add_parser(
+        "launch",
+        help="prepare, admit, then invoke the agent process (fail closed before spawn)",
+    )
+    p.add_argument("clank", help="Clank slug or id")
+    p.add_argument(
+        "--mission",
+        default=None,
+        help="required when admission is AMBIGUOUS; never silently chosen",
+    )
+    p.add_argument(
+        "--actor",
+        dest="agent_actor",
+        help="requesting actor (metadata, not a permission); overrides global --actor",
+    )
+    p.add_argument(
+        "--launcher",
+        default=None,
+        help="launcher identity (provenance, not a permission); defaults to actor",
+    )
+    p.add_argument(
+        "--expect-context",
+        default=None,
+        help="fail if current packet fingerprint no longer matches (stale-context detection)",
+    )
+    p.add_argument(
+        "--command",
+        dest="agent_command",
+        nargs=argparse.REMAINDER,
+        required=True,
+        metavar="ARG",
+        help="agent process argv; required; put this flag last so child flags stay in argv",
     )
     p.add_argument("--no-github", action="store_true", help="skip gh; local git only")
     p.set_defaults(func=cmd_agent)
