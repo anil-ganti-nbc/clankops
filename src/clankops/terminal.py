@@ -343,15 +343,16 @@ def dispatch(
                 home = {**home, "query_error": error}
             return HTTPStatus.OK, "application/json; charset=utf-8", _json(home)
         if route == "/attention":
+            clank = (query.get("clank") or [None])[0]
             report = attention_report(
                 store,
+                clank,
                 now=now,
                 stale_after=older,
                 include_github=github,
                 inspect_local=_inspect_local(live_local),
                 live_local=live_local,
             )
-            clank = (query.get("clank") or [None])[0]
             klass = (query.get("class") or [None])[0]
             reason = (query.get("reason") or query.get("reason_code") or [None])[0]
             items = report.get("items") or []

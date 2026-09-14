@@ -150,6 +150,11 @@ Snapshot attention coverage is PARTIAL: `GIT_DRIFT` and
 `DIRTY_WITHOUT_OPEN_SESSION` are unobservable until `?live=1`. Zero
 snapshot items is not an unqualified “none”.
 
+`?live=1` does not by itself mean EVALUATED. Coverage follows actual
+`observed_local.ok` per target. A missing path, missing checkout, or git
+inspect error stays UNOBSERVABLE / PARTIAL. Mixed fleets report
+observable and unobservable counts.
+
 UNKNOWN stays UNKNOWN. A different deployed SHA is informational, not
 failure. Dirty is not blocked. Clean is not complete. Old is not wrong.
 No canonical `local_path` is not abandoned. Process EXITED with Session
@@ -162,8 +167,11 @@ Foundation 7 semantics. Derived. Writes zero events. No
 acknowledge/dismiss.
 
 Snapshot pages report `coverage: PARTIAL` and
-`live-local-dependent checks: UNOBSERVABLE IN SNAPSHOT`. CLI attention
-still evaluates the full reason set.
+`live-local-dependent checks: UNOBSERVABLE IN SNAPSHOT`. Live pages
+report `EVALUATED` only when every targeted Clank supplied
+`observed_local.ok`. Otherwise coverage is `PARTIAL` and unobservable
+targets/reasons are listed. CLI attention attempts live local inspect
+and uses the same observability rule.
 
 Classes keep shape identity: integrity `■`, informational `◇`, age `○`.
 

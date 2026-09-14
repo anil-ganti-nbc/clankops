@@ -786,10 +786,86 @@ def test_snapshot_attention_coverage_is_partial_until_live(tmp_path: Path, monke
     assert "coverage: EVALUATED" in live_html
     live_api = json.loads(dispatch(store, "GET", "/api/attention?live=1", now=T0)[2].decode("utf-8"))
     assert live_api["coverage"] == "EVALUATED"
+    assert live_api["live_local_checks"] == "EVALUATED"
+    assert live_api["live_local_observable_count"] == 1
+    assert live_api["live_local_unobservable_count"] == 0
     assert any(item["reason_code"] == REASON_DIRTY_WITHOUT_OPEN_SESSION for item in live_api["items"])
     q_status, _, q_body = dispatch(store, "GET", "/attention?q=state:active", now=T0)
     assert q_status == 200
     assert "coverage: PARTIAL" in q_body.decode("utf-8")
+    store.conn.close()
+
+
+def test_live_attention_coverage_follows_actual_local_observability(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "clankops.reconcile.inspect_git",
+        lambda path: _local("main", HEAD, dirty=True),
+    )
+    store = open_store(tmp_path / "obs.db", actor="cursor", clock=FrozenClock(T0))
+    repo = _init_repo(tmp_path / "oem")
+    store.register_clank("oem-radar", local_path=str(repo), remotes=[CANON])
+    oem = store.start_mission("oem-radar", "handheld")
+    store.record_checkpoint(
+        oem["display_id"],
+        next_action="keep going",
+        branch="main",
+        head=HEAD,
+        working_tree="clean",
+    )
+    store.pause_mission(oem["display_id"])
+    store.register_clank("watch-clank", display_name="Watch Clank")
+    watch = store.start_mission("watch-clank", "keep collecting")
+    store.record_checkpoint(watch["display_id"], next_action="keep collecting")
+    store.pause_mission(watch["display_id"])
+
+    oem_live = json.loads(dispatch(store, "GET", "/api/attention?clank=oem-radar&live=1", now=T0)[2].decode("utf-8"))
+    assert oem_live["coverage"] == "EVALUATED"
+    assert oem_live["live_local_checks"] == "EVALUATED"
+    assert oem_live["live_local_observable_count"] == 1
+    assert oem_live["live_local_unobservable_count"] == 0
+    assert any(item["reason_code"] == REASON_DIRTY_WITHOUT_OPEN_SESSION for item in oem_live["items"])
+
+    watch_live = json.loads(
+        dispatch(store, "GET", "/api/attention?clank=watch-clank&live=1", now=T0)[2].decode("utf-8")
+    )
+    assert watch_live["coverage"] == "PARTIAL"
+    assert watch_live["live_local_checks"] == "UNOBSERVABLE"
+    assert watch_live["live_local_observable_count"] == 0
+    assert watch_live["live_local_unobservable_count"] == 1
+    assert watch_live["live_local_unobservable"][0]["clank"] == "watch-clank"
+    assert "no local_path" in str(watch_live["live_local_unobservable"][0]["error"])
+    assert REASON_DIRTY_WITHOUT_OPEN_SESSION not in [item["reason_code"] for item in watch_live["items"]]
+    watch_html = dispatch(store, "GET", "/attention?clank=watch-clank&live=1", now=T0)[2].decode("utf-8")
+    assert "coverage: PARTIAL" in watch_html
+    assert "live-local-dependent checks: UNOBSERVABLE" in watch_html
+    assert "none derived" not in watch_html
+    assert "use ?live=1 to evaluate Foundation 7 live-local reasons" not in watch_html
+    dossier = json.loads(dispatch(store, "GET", "/api/clank/watch-clank?live=1", now=T0)[2].decode("utf-8"))
+    assert dossier["attention"]["coverage"] == "PARTIAL"
+    assert dossier["attention"]["live_local_checks"] == "UNOBSERVABLE"
+    dossier_html = dispatch(store, "GET", "/clank/watch-clank?live=1", now=T0)[2].decode("utf-8")
+    assert "coverage: PARTIAL" in dossier_html
+    assert "EVALUATED" not in dossier_html.split("id=\"attention-coverage\"")[1].split("</p>")[0]
+
+    fleet_live = json.loads(dispatch(store, "GET", "/api/attention?live=1", now=T0)[2].decode("utf-8"))
+    assert fleet_live["coverage"] == "PARTIAL"
+    assert fleet_live["live_local_checks"] == "PARTIAL"
+    assert fleet_live["live_local_observable_count"] == 1
+    assert fleet_live["live_local_unobservable_count"] == 1
+    unobs = {row["clank"]: row["error"] for row in fleet_live["live_local_unobservable"]}
+    assert unobs == {"watch-clank": "no local_path"}
+    assert any(item["reason_code"] == REASON_DIRTY_WITHOUT_OPEN_SESSION for item in fleet_live["items"])
+    fleet_html = dispatch(store, "GET", "/?live=1", now=T0)[2].decode("utf-8")
+    assert "coverage PARTIAL" in fleet_html or "coverage: PARTIAL" in fleet_html
+    assert "use ?live=1 to evaluate Foundation 7 live-local reasons" not in fleet_html
+
+    snap = json.loads(dispatch(store, "GET", "/api/attention", now=T0)[2].decode("utf-8"))
+    assert snap["coverage"] == "PARTIAL"
+    assert snap["live_local_checks"] == "UNOBSERVABLE IN SNAPSHOT"
+    assert snap["live_local_observable_count"] == 0
+    assert snap["live_local_unobservable_count"] == 2
     store.conn.close()
 
 

@@ -385,7 +385,7 @@ def fleet_html(home: dict[str, Any], *, query: str = "", error: str | None = Non
         )
         + (
             " · use ?live=1 to evaluate Foundation 7 live-local reasons"
-            if att_report.get("coverage") == "PARTIAL"
+            if att_report.get("live_local_checks") == "UNOBSERVABLE IN SNAPSHOT"
             else ""
         )
         + "</p>"
@@ -410,8 +410,21 @@ def _attention_coverage(attention: dict[str, Any]) -> str:
         f"attention items: {len(items)}",
         f"coverage: {html.escape(str(coverage))}",
         f"live-local-dependent checks: {html.escape(str(checks))}",
+        (
+            "live-local observable: "
+            f"{html.escape(str(attention.get('live_local_observable_count', 'unknown')))}"
+        ),
+        (
+            "live-local unobservable: "
+            f"{html.escape(str(attention.get('live_local_unobservable_count', 'unknown')))}"
+        ),
     ]
-    if coverage == "PARTIAL":
+    for row in attention.get("live_local_unobservable") or []:
+        bits.append(
+            f"{html.escape(str(row.get('clank') or 'unknown'))}: "
+            f"{html.escape(str(row.get('error') or 'unobservable'))}"
+        )
+    if checks == "UNOBSERVABLE IN SNAPSHOT":
         bits.append("use ?live=1 to evaluate Foundation 7 live-local reasons")
     return f'<p class="muted" id="attention-coverage">{" · ".join(bits)}</p>'
 
@@ -433,8 +446,8 @@ def _attention_list(attention: dict[str, Any], *, heading: str = "ATTENTION") ->
         if attention.get("coverage") == "PARTIAL":
             return (
                 header
-                + '<p class="muted">snapshot did not evaluate the full reason set; '
-                "zero items here is not an unqualified none</p>"
+                + '<p class="muted">zero items here is not an unqualified none; '
+                "the live-local-dependent reason set was not fully evaluable</p>"
             )
         return header + '<p class="muted">none derived</p>'
     blocks = []

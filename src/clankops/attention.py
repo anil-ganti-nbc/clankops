@@ -545,6 +545,69 @@ def _sort_key(item: dict[str, Any]) -> tuple:
     )
 
 
+def _local_observability(
+    clank: dict[str, Any],
+    rec: dict[str, Any],
+    *,
+    live_local: bool | None,
+) -> dict[str, Any]:
+    local = rec.get("observed_local") or {}
+    slug = clank.get("slug") or clank.get("clank") or "unknown"
+    if live_local is False:
+        return {
+            "clank": slug,
+            "clank_id": clank.get("clank_id"),
+            "ok": False,
+            "error": "UNOBSERVABLE IN SNAPSHOT",
+        }
+    ok = local.get("ok") is True
+    error = None if ok else (local.get("error") or "unobservable")
+    return {
+        "clank": slug,
+        "clank_id": clank.get("clank_id"),
+        "ok": ok,
+        "error": error,
+    }
+
+
+def _live_local_coverage(
+    local_obs: list[dict[str, Any]],
+    *,
+    live_local: bool | None,
+) -> dict[str, Any]:
+    unobservable = [
+        {"clank": row["clank"], "clank_id": row.get("clank_id"), "error": row.get("error") or "unobservable"}
+        for row in local_obs
+        if not row.get("ok")
+    ]
+    observable_count = sum(1 for row in local_obs if row.get("ok"))
+    unobservable_count = len(unobservable)
+    if live_local is False:
+        return {
+            "coverage": "PARTIAL",
+            "live_local_checks": "UNOBSERVABLE IN SNAPSHOT",
+            "live_local_observable_count": 0,
+            "live_local_unobservable_count": len(local_obs),
+            "live_local_unobservable": unobservable,
+        }
+    if unobservable_count == 0:
+        return {
+            "coverage": "EVALUATED",
+            "live_local_checks": "EVALUATED",
+            "live_local_observable_count": observable_count,
+            "live_local_unobservable_count": 0,
+            "live_local_unobservable": [],
+        }
+    checks = "UNOBSERVABLE" if observable_count == 0 else "PARTIAL"
+    return {
+        "coverage": "PARTIAL",
+        "live_local_checks": checks,
+        "live_local_observable_count": observable_count,
+        "live_local_unobservable_count": unobservable_count,
+        "live_local_unobservable": unobservable,
+    }
+
+
 def attention_report(
     store: Store,
     clank: str | None = None,
@@ -562,13 +625,18 @@ def attention_report(
     """Derived attention items. Never mutates the ledger.
 
     ``live_local=False`` means snapshot mode: GIT_DRIFT and
-    DIRTY_WITHOUT_OPEN_SESSION are not evaluated. Coverage is PARTIAL.
+    DIRTY_WITHOUT_OPEN_SESSION are not evaluated. Coverage is PARTIAL
+    and live-local checks are UNOBSERVABLE IN SNAPSHOT.
+
+    When live local is requested (or CLI default), coverage follows
+    actual ``observed_local.ok`` per target. UNKNOWN stays UNKNOWN.
     """
     instant = now or store.clock.now()
     open_rows = open_sessions(store, now=instant, stale_after=stale_after)
     targets = [store.resolve_clank(clank)] if clank else store.list_clanks()
     items: list[dict[str, Any]] = []
     freshness: list[dict[str, Any]] = []
+    local_obs: list[dict[str, Any]] = []
     for row in targets:
         clank_row = dict(row)
         unfinished = store.unfinished_missions(clank_row["clank_id"])
@@ -591,6 +659,7 @@ def attention_report(
                 inspect_remote=inspect_remote,
             )
         rec_mission = _mission_from_reconcile(store, rec)
+        local_obs.append(_local_observability(clank_row, rec, live_local=live_local))
         open_for = _sessions_for_clank(open_rows, clank_row["clank_id"])
         freshness.append(_freshness(store, clank_row, unfinished, open_for, instant))
         for mission in unfinished:
@@ -622,12 +691,7 @@ def attention_report(
                     )
                 )
     items.sort(key=_sort_key)
-    if live_local is False:
-        coverage = "PARTIAL"
-        live_local_checks = "UNOBSERVABLE IN SNAPSHOT"
-    else:
-        coverage = "EVALUATED"
-        live_local_checks = "EVALUATED"
+    coverage_block = _live_local_coverage(local_obs, live_local=live_local)
     return {
         "items": items,
         "freshness": freshness,
@@ -635,10 +699,13 @@ def attention_report(
         "threshold_source": threshold_source,
         "derived": True,
         "authoritative": False,
-        "coverage": coverage,
-        "live_local_checks": live_local_checks,
+        "coverage": coverage_block["coverage"],
+        "live_local_checks": coverage_block["live_local_checks"],
         "live_local_reason_codes": list(LIVE_LOCAL_REASON_CODES),
         "live_local": False if live_local is False else True if live_local else None,
+        "live_local_observable_count": coverage_block["live_local_observable_count"],
+        "live_local_unobservable_count": coverage_block["live_local_unobservable_count"],
+        "live_local_unobservable": coverage_block["live_local_unobservable"],
     }
 
 
@@ -646,11 +713,26 @@ def format_attention_text(report: dict[str, Any]) -> str:
     lines = [
         "ATTENTION (derived; not authoritative; writes zero ledger events)",
         f"threshold {report.get('threshold')} ({report.get('threshold_source')})",
+        (
+            f"coverage {report.get('coverage') or 'UNKNOWN'} "
+            f"(live-local-dependent checks: {report.get('live_local_checks') or 'UNKNOWN'})"
+        ),
+        (
+            f"live-local observable {report.get('live_local_observable_count', 'unknown')} "
+            f"unobservable {report.get('live_local_unobservable_count', 'unknown')}"
+        ),
         "",
     ]
+    for row in report.get("live_local_unobservable") or []:
+        lines.append(f"  unobservable {row.get('clank')}: {row.get('error') or 'unobservable'}")
+    if report.get("live_local_unobservable"):
+        lines.append("")
     items = report.get("items") or []
     if not items:
-        lines.append("none derived")
+        if report.get("coverage") == "PARTIAL":
+            lines.append("zero items is not an unqualified none; live-local-dependent checks were not fully evaluable")
+        else:
+            lines.append("none derived")
         return "\n".join(lines)
     for item in items:
         mark = CLASS_MARK.get(item.get("class") or "", "·")
