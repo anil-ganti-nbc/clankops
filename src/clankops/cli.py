@@ -918,7 +918,12 @@ def cmd_agent(args: argparse.Namespace) -> int:
         finally:
             store.conn.close()
         merged = {**(ctx.get("env") or {}), **(result.get("env") or {})}
-        payload = {**ctx, **{k: v for k, v in result.items() if k != "env"}, "env": merged}
+        public = {
+            key: value
+            for key, value in result.items()
+            if key not in {"argv", "args", "env"}
+        }
+        payload = {**ctx, **public, "env": merged}
         proc = result.get("process") or {}
         _print(
             f"launched {result['mission']} session={result['session_id']} "

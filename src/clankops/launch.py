@@ -16,7 +16,11 @@ from typing import Any, Callable, Mapping, Sequence
 from clankops.agent import evaluate_admission, prepare_agent, require_actor
 from clankops.enums import EventType
 from clankops.errors import ValidationError
-from clankops.process import record_process_exited, record_process_start_failed
+from clankops.process import (
+    command_identity,
+    record_process_exited,
+    record_process_start_failed,
+)
 from clankops.resume import (
     STATUS_AMBIGUOUS,
     STATUS_NO_UNFINISHED_MISSION,
@@ -283,7 +287,7 @@ def launch_agent(
         )
     return {
         "launched": True,
-        "argv": argv,
+        "command": command_identity(argv),
         "exit_code": exit_code,
         "process": {
             "observation_id": process.get("observation_id") if process else None,

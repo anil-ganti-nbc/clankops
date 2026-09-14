@@ -24,6 +24,7 @@ from clankops.clock import FrozenClock
 from clankops.enums import EventType, MissionState
 from clankops.errors import ValidationError
 from clankops.events import list_events
+from clankops.cli import main
 from clankops.launch import launch_agent
 from clankops.process import (
     FORBIDDEN_PAYLOAD_KEYS,
@@ -45,7 +46,7 @@ from clankops.terminal import _dossier_html
 
 from test_foundation2 import T0
 from test_foundation3 import _seed
-from test_foundation9 import FakeProc, _event_count, _paused
+from test_foundation9 import AGENT_WRAPPERS, DEV_WRAPPER, FakeProc, _event_count, _paused
 
 FOUNDATION_7_REASON_CODES = {
     REASON_MISSION_NO_NEXT_ACTION,
@@ -58,7 +59,18 @@ FOUNDATION_7_REASON_CODES = {
 SECRET_TOKEN = "ghp_foundation10notarealtokenvalue"
 WEBHOOK = "https://hooks.slack.com/services/T00/B00/secret"
 SECRET_ENV = "super-secret-env-value-foundation10"
+PASTED_SOURCE = "FOUNDATION10_PASTED_SOURCE_" + ("Z" * 220)
 MISSING_EXE = "definitely-not-an-executable-clankops-f10"
+
+
+def _has_argv_list(value) -> bool:
+    if isinstance(value, dict):
+        if isinstance(value.get("argv"), list):
+            return True
+        return any(_has_argv_list(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_has_argv_list(item) for item in value)
+    return False
 
 
 def _codes(report: dict) -> list[str]:
@@ -157,6 +169,10 @@ def test_successful_managed_launch_records_one_exit_for_that_session(
     assert event.payload["context_fingerprint"] == result["context_fingerprint"]
     assert event.payload["observed_at"]
     assert event.payload["source"] == "SYSTEM"
+    assert "argv" not in result
+    assert result["command"]["executable"]
+    assert result["command"]["argv_count"] == 3
+    assert result["command"]["argv_redacted"] is False
     session = store.resolve_session(result["session_id"])
     assert session["ended_utc"] is None
     assert store.resolve_mission(result["mission_id"])["state"] == MissionState.ACTIVE
@@ -581,3 +597,120 @@ def test_history_preserves_multiple_observations_on_one_session(tmp_path: Path) 
     assert rows[0]["observation_id"] != rows[1]["observation_id"]
     assert rows[0]["ledger_seq"] < rows[1]["ledger_seq"]
     store.conn.close()
+
+
+def test_launch_result_omits_argv_while_child_receives_exact_list(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "argv-out.db", actor="cursor", clock=FrozenClock(T0))
+    _paused(store)
+    runner = FakeProc(returncode=0)
+    command = [sys.executable, "--token=" + SECRET_TOKEN, WEBHOOK, PASTED_SOURCE]
+    result = launch_agent(
+        store,
+        "oem-radar",
+        actor="cursor",
+        launcher="cursor",
+        command=command,
+        include_github=False,
+        now=T0,
+        environ={"API_KEY": SECRET_ENV},
+        runner=runner,
+    )
+    assert runner.calls[0]["argv"] == command
+    assert runner.calls[0]["shell"] is False
+    assert "argv" not in result
+    assert result["command"] == command_identity(command)
+    assert result["command"]["argv_redacted"] is True
+    assert result["command"]["argv_count"] == 4
+    dumped = json.dumps(result)
+    assert SECRET_TOKEN not in dumped
+    assert WEBHOOK not in dumped
+    assert PASTED_SOURCE not in dumped
+    assert SECRET_ENV not in dumped
+    assert _has_argv_list(result) is False
+    blob = _events_blob(store)
+    assert SECRET_TOKEN not in blob
+    assert WEBHOOK not in blob
+    assert PASTED_SOURCE not in blob
+    assert SECRET_ENV not in blob
+    store.conn.close()
+
+
+def test_cli_launch_json_does_not_expose_raw_argv(tmp_path: Path, capsys) -> None:
+    db = str(tmp_path / "cli-argv.db")
+    store = open_store(db, actor="cursor", clock=FrozenClock(T0))
+    _paused(store)
+    store.conn.close()
+    seen = tmp_path / "seen-argv.json"
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; json.dump(sys.argv[1:], open(sys.argv[1], 'w', encoding='utf-8'))",
+        str(seen),
+        SECRET_TOKEN,
+        WEBHOOK,
+        PASTED_SOURCE,
+    ]
+    assert (
+        main(
+            [
+                "--db",
+                db,
+                "--json",
+                "--actor",
+                "cursor",
+                "agent",
+                "launch",
+                "oem-radar",
+                "--launcher",
+                "cursor",
+                "--no-github",
+                "--command",
+                *command,
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    stdout = captured.out
+    stderr = captured.err
+    payload = json.loads(stdout)
+    for leak in (SECRET_TOKEN, WEBHOOK, PASTED_SOURCE, SECRET_ENV):
+        assert leak not in stdout
+        assert leak not in stderr
+        assert leak not in json.dumps(payload)
+    assert "argv" not in payload
+    assert _has_argv_list(payload) is False
+    identity = payload["command"]
+    assert identity["executable"]
+    assert identity["argv_count"] == len(command)
+    assert identity["argv_redacted"] is True
+    assert set(identity) == {"executable", "argv_count", "argv_redacted"}
+    assert json.loads(seen.read_text(encoding="utf-8")) == [
+        str(seen),
+        SECRET_TOKEN,
+        WEBHOOK,
+        PASTED_SOURCE,
+    ]
+    store = open_store(db, actor="cursor", clock=FrozenClock(T0))
+    blob = _events_blob(store)
+    for leak in (SECRET_TOKEN, WEBHOOK, PASTED_SOURCE):
+        assert leak not in blob
+    for event in _process_events(store):
+        assert FORBIDDEN_PAYLOAD_KEYS.isdisjoint(event.payload)
+        assert "argv" not in event.payload
+    store.conn.close()
+
+
+def test_wrappers_do_not_print_raw_agent_command() -> None:
+    forbidden = (
+        "Write-Host $AgentCommand",
+        "Write-Output $AgentCommand",
+        'Write-Host "$AgentCommand"',
+        'Write-Output "$AgentCommand"',
+        "ConvertTo-Json $AgentCommand",
+    )
+    for path in (*AGENT_WRAPPERS, DEV_WRAPPER):
+        text = path.read_text(encoding="utf-8")
+        for snippet in forbidden:
+            assert snippet not in text, path.name
+        assert "Invoke-Expression" not in text

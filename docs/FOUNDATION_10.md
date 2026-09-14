@@ -72,6 +72,11 @@ recorded as `PROCESS_EXITED`.
 ClankOps does not persist full environment, credentials, tokens, prompts,
 pasted source, webhook URLs, argv lists, or a reconstructed shell string.
 
+Raw child argv is execution input, not output evidence. `launch_agent()`
+and `clankctl agent launch --json` expose only safe command identity
+(`executable`, `argv_count`, `argv_redacted`). The child is still invoked
+as `subprocess.run(argv, ..., shell=False)`.
+
 ## Launch boundaries
 
 | Case | Behaviour |
