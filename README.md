@@ -28,7 +28,7 @@ should answer: what this Clank is, which mission is unfinished, where developmen
 
 ## Status
 
-Foundation 11 (Mission lifecycle reconciliation). Fleet Harvest 1 (one-shot local Git evidence). Fleet Pulse 1 (optional Windows scheduled harvest; explicit install only). Terminal Beta (read-only Fleet Command Centre). Local-first Python 3.14+ + SQLite. No production deployment. No remote SSH from ClankOps.
+Foundation 11 (Mission lifecycle reconciliation). Fleet Harvest 1 (one-shot local Git evidence). Fleet Pulse 1 (optional Windows scheduled harvest; explicit install only). Terminal Beta (read-only Fleet Command Centre). Desktop Alpha (native Windows shell around Terminal; optional extra). Local-first Python 3.14+ + SQLite. No production deployment. No remote SSH from ClankOps.
 
 ClankOps does **not** replace Motherclank (fleet laws), Standards Clank (conformance), Quartermaster (model/resource/quota), or Unified Clank Platform (shared runtime). It observes development state.
 
@@ -40,7 +40,14 @@ Python 3.14+. From this repository:
 python -m pip install -e ".[dev]"
 ```
 
-`clankctl` is the CLI. If Scripts is not on PATH, invoke as:
+Desktop Alpha is optional and is not installed with the core package:
+
+```powershell
+python -m pip install -e ".[desktop]"
+python -m clankops.desktop
+```
+
+`clankctl` is the CLI and does not require pywebview. If Scripts is not on PATH, invoke as:
 
 ```powershell
 python -m clankops.cli --help
@@ -86,9 +93,10 @@ python -m clankops --json agent launch clankops --actor cursor --launcher cursor
 python -m clankops --json harvest local-git --dry-run
 python -m clankops --json pulse spec
 python -m clankops terminal
+python -m clankops.desktop
 ```
 
-The Terminal is localhost-only and read-only. Default pages are snapshots; `?live=1` and `?github=1` are explicit. It does not harvest, schedule collection, or deploy. See [Terminal Beta](docs/TERMINAL_BETA.md). Optional local harvest cadence is an explicit Windows task, not Terminal: [Fleet Pulse 1](docs/FLEET_PULSE_1.md).
+The Terminal is localhost-only and read-only. Default pages are snapshots; `?live=1` and `?github=1` are explicit. It does not harvest, schedule collection, or deploy. See [Terminal Beta](docs/TERMINAL_BETA.md). Desktop Alpha hosts that same Terminal in a native WebView2 window; it does not create a second UI or write the ledger. See [Desktop Alpha](docs/DESKTOP_ALPHA.md). Optional local harvest cadence is an explicit Windows task, not Terminal or Desktop: [Fleet Pulse 1](docs/FLEET_PULSE_1.md).
 
 ## Documentation
 
@@ -111,6 +119,7 @@ The Terminal is localhost-only and read-only. Default pages are snapshots; `?liv
 - [Fleet Harvest 1 local Git evidence](docs/FLEET_HARVEST_1.md)
 - [Fleet Pulse 1 scheduled local harvest](docs/FLEET_PULSE_1.md)
 - [Terminal Beta Fleet Command Centre](docs/TERMINAL_BETA.md)
+- [Desktop Alpha native Windows shell](docs/DESKTOP_ALPHA.md)
 - [Future scope](docs/FUTURE_SCOPE.md)
 
 ## Tests
