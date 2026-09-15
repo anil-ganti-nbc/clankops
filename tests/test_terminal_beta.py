@@ -165,18 +165,15 @@ def test_required_html_and_json_routes(tmp_path: Path, monkeypatch: pytest.Monke
     harvest_before = sum(1 for e in list_events(store.conn) if e.event_type == EventType.LOCAL_GIT_HARVEST_COMPLETED)
     observed_before = sum(1 for e in list_events(store.conn) if e.event_type == EventType.LOCAL_GIT_STATE_OBSERVED)
 
-    for path in ("/", "/fleet", "/attention", "/sessions", "/health", "/clank/oem-radar", "/clank/watch-clank", "/clank/clankops"):
+    for path in ("/", "/fleet", "/attention", "/sessions", "/health", "/status", "/clank/oem-radar", "/clank/watch-clank", "/clank/clankops"):
         status, ctype, body = dispatch(store, "GET", path, now=T0, census=_census())
         assert status == 200, path
         text = body.decode("utf-8")
-        if path != "/health":
-            assert "CLANKOPS TERMINAL BETA" in text
-            assert "[SNAPSHOT]" in text
-            assert "id=\"command-bar\"" in text or path in {"/sessions", "/health", "/attention"} or "command-bar" in text or path.startswith("/clank/")
-        else:
-            payload = json.loads(text)
-            assert payload["ok"] is True
-            assert payload["snapshot"]["max_ledger_seq"] == before["max_ledger_seq"]
+        assert "text/html" in ctype
+        assert "CLANKOPS TERMINAL BETA" in text
+        assert "[SNAPSHOT]" in text
+        assert "snapshot at " in text
+        assert "id=\"command-bar\"" in text or path in {"/sessions", "/health", "/status", "/attention"} or "command-bar" in text or path.startswith("/clank/")
 
     status, _, body = dispatch(store, "GET", "/", now=T0)
     home = body.decode("utf-8")
@@ -243,7 +240,7 @@ def test_required_html_and_json_routes(tmp_path: Path, monkeypatch: pytest.Monke
     assert status == 200
 
     for method in ("POST", "PUT", "PATCH", "DELETE"):
-        for path in ("/", "/api/fleet", "/clank/oem-radar", "/attention"):
+        for path in ("/", "/api/fleet", "/clank/oem-radar", "/attention", "/health", "/api/health"):
             status, _, _ = dispatch(store, method, path)
             assert status == 405
 
@@ -886,5 +883,80 @@ def test_empty_evidence_planes_do_not_stamp_source_badges(tmp_path: Path) -> Non
     assert 'data-plane="github">UNKNOWN / NOT REQUESTED' in live_html
     gh_html = dispatch(store, "GET", "/clank/watch-clank?github=1", now=T0)[2].decode("utf-8")
     assert 'data-plane="live">UNKNOWN / NOT REQUESTED' in gh_html
+    store.conn.close()
+
+
+def test_terminal_status_html_and_api_health_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    git_calls: list[str] = []
+    github_calls: list[str] = []
+    harvest_calls: list[str] = []
+    monkeypatch.setattr(
+        "clankops.gitinspect.inspect_git",
+        lambda *a, **k: git_calls.append("git") or {"is_git": False},
+    )
+    monkeypatch.setattr(
+        "clankops.githubinspect.inspect_github",
+        lambda *a, **k: github_calls.append("gh") or {"ok": False},
+    )
+    monkeypatch.setattr(
+        "clankops.harvest.harvest_local_git",
+        lambda *a, **k: harvest_calls.append("harvest") or {},
+    )
+    store = open_store(tmp_path / "status.db", actor="cursor", clock=FrozenClock(T0))
+    store.register_clank("oem-radar")
+    before = ledger_fingerprint(store)
+
+    status, ctype, body = dispatch(store, "GET", "/health", now=T0)
+    html = body.decode("utf-8")
+    assert status == 200
+    assert ctype.startswith("text/html")
+    assert "CLANKOPS TERMINAL BETA" in html
+    assert 'href="/">fleet</a>' in html
+    assert 'href="/attention">attention</a>' in html
+    assert 'href="/sessions">sessions</a>' in html
+    assert 'href="/health">status</a>' in html
+    assert "TERMINAL STATUS" in html
+    assert "ClankOps Terminal process/read path" in html
+    assert "not fleet/source operational health" in html
+    assert "read-only" in html
+    assert ">beta<" in html or "beta" in html
+    assert "per-request" in html
+    assert "snapshot at 2026-09-10T04:00:00.000000Z" in html
+    assert "Pretty-print" not in html
+    assert not html.lstrip().startswith("{")
+
+    alias, alias_type, alias_body = dispatch(store, "GET", "/status", now=T0)
+    assert alias == 200
+    assert alias_type.startswith("text/html")
+    assert "TERMINAL STATUS" in alias_body.decode("utf-8")
+
+    head_status, head_type, _ = dispatch(store, "HEAD", "/health", now=T0)
+    assert head_status == 200
+    assert head_type.startswith("text/html")
+    api_head_status, api_head_type, _ = dispatch(store, "HEAD", "/api/health", now=T0)
+    assert api_head_status == 200
+    assert api_head_type.startswith("application/json")
+
+    api_status, api_type, api_body = dispatch(store, "GET", "/api/health", now=T0)
+    payload = json.loads(api_body.decode("utf-8"))
+    assert api_status == 200
+    assert api_type.startswith("application/json")
+    assert payload == {
+        "ok": True,
+        "mode": "read-only",
+        "terminal": "beta",
+        "stale_after": "24h",
+        "connection": "per-request",
+        "snapshot": {
+            "generated_at": "2026-09-10T04:00:00.000000Z",
+            "ledger_event_count": before["event_count"],
+            "max_ledger_seq": before["max_ledger_seq"],
+            "consistency": "read-time; not a transactionally frozen multi-page snapshot",
+        },
+    }
+    assert ledger_fingerprint(store) == before
+    assert git_calls == []
+    assert github_calls == []
+    assert harvest_calls == []
     store.conn.close()
 

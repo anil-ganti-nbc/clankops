@@ -12,8 +12,15 @@ of that same command. Remote GitHub freshness remains out of scope.
   fleet grid, dossier evidence matrix, attention/sessions views, bounded
   filter grammar, keyboard contract. It still does not mutate the ledger,
   run Harvest, or contact GitHub unless explicitly asked (`?github=1`).
+- Native Windows application — **Desktop Alpha** is a thin shell around
+  that Terminal (`python -m clankops.desktop` / `ClankOps.exe`): loopback
+  `serve()`, WebView2, single-instance mutex, ONEDIR package. It does not
+  duplicate Terminal, create authority, or bundle an installer.
+- Desktop Beta (deferred): installer, updates, tray, Start Menu,
+  optional startup, icon polish, code signing, optional WebView2
+  bootstrap.
 - Full Clank query language / semantic search — deferred
-- Mutation / control UI — deferred; not part of Terminal Beta
+- Mutation / control UI — deferred; not part of Terminal Beta or Desktop Alpha
 
 ## Git / GitHub ingestion
 

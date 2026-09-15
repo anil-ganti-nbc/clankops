@@ -43,7 +43,7 @@ Binds `127.0.0.1:8765` by default. GET/HEAD only. Each HTTP request opens its ow
 
 Default stale threshold on the fleet home: **24h** (`--stale-after`).
 
-Routes: `/`, `/clank/<slug>`, `/api/fleet`, `/api/clank/<slug>`, `/api/coverage`, `/api/sessions/open`, `/api/sessions/stale`, `/health`.
+Routes: `/`, `/clank/<slug>`, `/api/fleet`, `/api/clank/<slug>`, `/api/coverage`, `/api/sessions/open`, `/api/sessions/stale`, `/health`. Terminal Beta serves `/health` as HTML Terminal status (not fleet/source health) and keeps the JSON payload at `/api/health`.
 
 No collection, no Task Scheduler, no Hetzner, no remote bind.
 

@@ -61,7 +61,8 @@ A snapshot marker is attached to top-level payloads:
 
 This is **read-time**, not a transactionally frozen multi-page snapshot.
 Two tabs opened seconds apart may see different `max_ledger_seq` if
-another actor wrote.
+another actor wrote. The common HTML status bar labels `generated_at`
+as `snapshot at <utc-Z>` (STD-UI-COM-010).
 
 ## Routes
 
@@ -73,12 +74,13 @@ HTML:
 | `/clank/<slug>` | Per-Clank dossier |
 | `/attention` | Derived attention queue |
 | `/sessions` | Session / process / handoff evidence |
-| `/health` | Process liveness JSON (not a fleet health score) |
+| `/health`, `/status` | Terminal process/read-path HTML status (not fleet/source operational health) |
 
 JSON (additive fields; existing keys kept):
 
 | Path | Purpose |
 | --- | --- |
+| `/api/health` | Existing read-only Terminal status JSON (`ok`, mode, terminal, connection, snapshot) |
 | `/api/fleet` | Fleet payload + snapshot/mode |
 | `/api/clank/<slug>` | Dossier payload |
 | `/api/coverage` | Census coverage |
