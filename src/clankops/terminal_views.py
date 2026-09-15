@@ -29,6 +29,13 @@ def _unknown(value: Any) -> str:
     return str(value)
 
 
+def _count(value: Any) -> str:
+    """Shared-header fleet counters. Missing/None is UNKNOWN; observed 0 is 0."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return "UNKNOWN"
+    return str(value)
+
+
 def mark(label: str) -> str:
     return f'<span class="mark">[{html.escape(str(label))}]</span>'
 
@@ -199,17 +206,17 @@ def _status_bar(status: dict[str, Any]) -> str:
         extra += mark("GITHUB NETWORK")
     if mode == "SNAPSHOT":
         extra += mark("SNAPSHOT")
-    clanks = status.get("registered_clanks")
-    active = status.get("active_missions")
-    blocked = status.get("blocked_missions")
+    clanks = _count(status.get("registered_clanks"))
+    active = _count(status.get("active_missions"))
+    blocked = _count(status.get("blocked_missions"))
     return f"""
 <div class="status">
   <strong>CLANKOPS TERMINAL BETA</strong>
   {extra}
   <span>LEDGER #{html.escape(str(seq))}</span>
-  <span>{html.escape(str(clanks or 0))} CLANKS</span>
-  <span>{html.escape(str(active or 0))} ACTIVE</span>
-  <span>{html.escape(str(blocked or 0))} BLOCKED</span>
+  <span>{html.escape(clanks)} CLANKS</span>
+  <span>{html.escape(active)} ACTIVE</span>
+  <span>{html.escape(blocked)} BLOCKED</span>
   <span class="muted">snapshot at {html.escape(str(generated))}</span>
   <span class="muted">view {view}{(' · q=' + q) if q else ''}</span>
 </div>
@@ -884,9 +891,6 @@ def dossier_html(payload: dict[str, Any]) -> str:
         "max_ledger_seq": snap.get("max_ledger_seq"),
         "generated_at": snap.get("generated_at"),
         "view": f"clank:{ident.get('slug')}",
-        "registered_clanks": 1,
-        "active_missions": 1 if now.get("mission_state") == "ACTIVE" else 0,
-        "blocked_missions": 1 if now.get("mission_state") == "BLOCKED" else 0,
     }
     sessions = now.get("open_sessions") or []
     session_html = mark("none") if not sessions else "".join(session_dossier_html(s) for s in sessions)

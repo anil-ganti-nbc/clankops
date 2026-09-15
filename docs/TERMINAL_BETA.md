@@ -64,6 +64,11 @@ Two tabs opened seconds apart may see different `max_ledger_seq` if
 another actor wrote. The common HTML status bar labels `generated_at`
 as `snapshot at <utc-Z>` (STD-UI-COM-010).
 
+Shared header counters preserve evidence state: missing/unavailable
+counts render UNKNOWN; only observed zero renders 0. CLANKS / ACTIVE /
+BLOCKED are fleet-wide. Pages without a fleet summary must not
+synthesise those labels from page-local scope.
+
 ## Routes
 
 HTML:
