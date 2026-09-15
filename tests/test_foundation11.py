@@ -281,7 +281,7 @@ def test_terminal_history_is_not_casually_rewritten(tmp_path: Path) -> None:
     with pytest.raises(InvalidTransitionError):
         _reconcile(store, abandoned)
     active = store.start_mission("oem-radar", "still active")
-    with pytest.raises(InvalidTransitionError, match="ordinary"):
+    with pytest.raises(ValidationError, match="live/open Session"):
         _reconcile(store, active)
     paused = store.start_mission("oem-radar", "pause then ordinary complete")
     store.pause_mission(paused["display_id"])
@@ -648,7 +648,7 @@ def test_reconciliation_fails_if_mission_became_active(tmp_path: Path) -> None:
     setup.conn.close()
     store = open_store(db, actor="user", clock=FrozenClock(T0))
     before = _event_count(store, EventType.MISSION_STATE_RECONCILED)
-    with pytest.raises(InvalidTransitionError):
+    with pytest.raises(ValidationError, match="live/open Session"):
         _reconcile(store, mission)
     assert _event_count(store, EventType.MISSION_STATE_RECONCILED) == before
     row = store.resolve_mission(mission["display_id"])
@@ -742,4 +742,114 @@ def test_unrelated_mission_writes_do_not_corrupt_reconciliation(tmp_path: Path) 
     assert result["from_state"] == MissionState.PAUSED
     assert store.resolve_mission(second["display_id"])["state"] == MissionState.ACTIVE
     assert store.resolve_mission(first["display_id"])["state"] == MissionState.COMPLETED
+    store.conn.close()
+
+
+def _stale_active(store):
+    mission = _seed(store)
+    store.end_session(mission["session_id"], reason="stale without handoff")
+    assert store.resolve_mission(mission["display_id"])["state"] == MissionState.ACTIVE
+    open_ids = [
+        item["session_id"]
+        for item in store.list_sessions(mission["display_id"])
+        if item["ended_utc"] is None
+    ]
+    assert open_ids == []
+    return mission
+
+
+def test_stale_active_no_open_session_reconciles_completed(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "stale-active.db", actor="user", clock=FrozenClock(T0))
+    mission = _stale_active(store)
+    before_started = _event_count(store, EventType.SESSION_STARTED)
+    before_ended = _event_count(store, EventType.SESSION_ENDED)
+    before_checkpoint = _event_count(store, EventType.CHECKPOINT_RECORDED)
+    before_handoff = _event_count(store, EventType.HANDOFF_RECORDED)
+    before_changed = _event_count(store, EventType.MISSION_STATE_CHANGED)
+    result = _reconcile(
+        store,
+        mission,
+        reason="scoped work merged; Mission remained ACTIVE without a recorded handoff",
+        evidence_occurred_at="2026-09-11T12:00:00Z",
+    )
+    row = store.resolve_mission(mission["display_id"])
+    assert row["state"] == MissionState.COMPLETED
+    assert result["from_state"] == MissionState.ACTIVE
+    assert result["to_state"] == MissionState.COMPLETED
+    assert result["session_id"] is None
+    event = _of(store, EventType.MISSION_STATE_RECONCILED)[0]
+    assert event.source == EventSource.USER
+    assert event.ts_utc != event.payload["evidence_occurred_at"]
+    assert event.payload["from_state"] == MissionState.ACTIVE
+    assert _event_count(store, EventType.SESSION_STARTED) == before_started
+    assert _event_count(store, EventType.SESSION_ENDED) == before_ended
+    assert _event_count(store, EventType.CHECKPOINT_RECORDED) == before_checkpoint
+    assert _event_count(store, EventType.HANDOFF_RECORDED) == before_handoff
+    assert _event_count(store, EventType.MISSION_STATE_CHANGED) == before_changed
+    assert not any(
+        item.payload.get("to_state") == MissionState.COMPLETED
+        for item in _of(store, EventType.MISSION_STATE_CHANGED)
+    )
+    closed = store.resolve_session(mission["session_id"])
+    assert derive_handoff_status(store, closed) == HANDOFF_UNKNOWN
+    store.conn.close()
+
+
+def test_active_open_session_refuses_reconcile(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "active-open.db", actor="user", clock=FrozenClock(T0))
+    mission = _seed(store)
+    before = ledger_fingerprint(store)
+    with pytest.raises(ValidationError, match="live/open Session"):
+        _reconcile(store, mission)
+    assert ledger_fingerprint(store) == before
+    assert store.resolve_mission(mission["display_id"])["state"] == MissionState.ACTIVE
+    assert _event_count(store, EventType.MISSION_STATE_RECONCILED) == 0
+    store.conn.close()
+
+
+def test_stale_active_missing_evidence_refuses(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "active-evidence.db", actor="user", clock=FrozenClock(T0))
+    mission = _stale_active(store)
+    before = ledger_fingerprint(store)
+    with pytest.raises(ValidationError, match="evidence"):
+        _reconcile(store, mission, evidence=[])
+    assert ledger_fingerprint(store) == before
+    assert store.resolve_mission(mission["display_id"])["state"] == MissionState.ACTIVE
+    store.conn.close()
+
+
+def test_stale_active_github_source_refuses(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "active-src.db", actor="user", clock=FrozenClock(T0))
+    mission = _stale_active(store)
+    before = ledger_fingerprint(store)
+    with pytest.raises(ValidationError, match="must be USER"):
+        _reconcile(store, mission, source=EventSource.GITHUB)
+    assert ledger_fingerprint(store) == before
+    assert store.resolve_mission(mission["display_id"])["state"] == MissionState.ACTIVE
+    assert _event_count(store, EventType.MISSION_STATE_RECONCILED) == 0
+    store.conn.close()
+
+
+def test_stale_active_rebuild_preserves_history(tmp_path: Path) -> None:
+    store = open_store(tmp_path / "active-rebuild.db", actor="user", clock=FrozenClock(T0))
+    mission = _stale_active(store)
+    _reconcile(store, mission, evidence_occurred_at="2026-09-11T12:00:00Z")
+    event = _of(store, EventType.MISSION_STATE_RECONCILED)[0]
+    blob = json.dumps(event.payload, sort_keys=True)
+    event_id = event.event_id
+    ts = event.ts_utc
+    before = dump_projection_state(store.conn)
+    fp = ledger_fingerprint(store)
+    rebuild_projections(store.conn)
+    assert dump_projection_state(store.conn) == before
+    assert ledger_fingerprint(store) == fp
+    assert store.resolve_mission(mission["display_id"])["state"] == MissionState.COMPLETED
+    still = store.conn.execute(
+        "SELECT * FROM events WHERE event_id = ?", (event_id,)
+    ).fetchone()
+    assert still["ts_utc"] == ts
+    assert json.loads(still["payload_json"]) == json.loads(blob)
+    recs = store.conn.execute("SELECT * FROM mission_reconciliations").fetchall()
+    assert len(recs) == 1
+    assert recs[0]["from_state"] == MissionState.ACTIVE
     store.conn.close()
