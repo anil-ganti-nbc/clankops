@@ -25,7 +25,17 @@ from clankops.readmodel import clank_timeline, ledger_fingerprint
 from clankops.store import open_readonly_store, open_store
 from clankops.terminal import assert_bind_allowed, dispatch, serve
 from clankops.terminal_query import QueryError, apply_filters, parse_filter
-from clankops.terminal_views import HELP_BINDINGS, _js, fleet_html
+from clankops.terminal_views import (
+    HELP_BINDINGS,
+    _count,
+    _js,
+    _status_bar,
+    attention_html,
+    dossier_html,
+    fleet_html,
+    sessions_html,
+    status_html,
+)
 
 from test_fleet_harvest1 import SECRET_FILE, SECRET_PASSWORD, SECRET_QUERY, SECRET_TOKEN, _init_repo, _git
 from test_foundation2 import T0, _census, _http, running_terminal
@@ -81,6 +91,10 @@ def _seed_fleet(store, tmp_path: Path) -> dict:
 
 def _blob(*parts: object) -> str:
     return "\n".join(str(part) for part in parts)
+
+
+def _header(html: str) -> str:
+    return html.split('<div class="nav status">', 1)[0]
 
 
 def test_parse_filter_grammar_and_and_semantics() -> None:
@@ -954,6 +968,160 @@ def test_terminal_status_html_and_api_health_json(tmp_path: Path, monkeypatch: p
             "consistency": "read-time; not a transactionally frozen multi-page snapshot",
         },
     }
+    assert ledger_fingerprint(store) == before
+    assert git_calls == []
+    assert github_calls == []
+    assert harvest_calls == []
+    store.conn.close()
+
+
+def test_shared_header_unknown_is_not_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _count(None) == "UNKNOWN"
+    assert _count(0) == "0"
+    assert _count(18) == "18"
+    assert _count(True) == "UNKNOWN"
+    assert _count(False) == "UNKNOWN"
+    assert _count("18") == "UNKNOWN"
+    assert _count(1.5) == "UNKNOWN"
+
+    missing = _status_bar({})
+    assert "UNKNOWN CLANKS" in missing
+    assert "UNKNOWN ACTIVE" in missing
+    assert "UNKNOWN BLOCKED" in missing
+    assert "0 CLANKS" not in missing
+    assert "0 ACTIVE" not in missing
+    assert "0 BLOCKED" not in missing
+
+    explicit_none = _status_bar(
+        {"registered_clanks": None, "active_missions": None, "blocked_missions": None}
+    )
+    assert "UNKNOWN CLANKS" in explicit_none
+    assert "UNKNOWN ACTIVE" in explicit_none
+    assert "UNKNOWN BLOCKED" in explicit_none
+    assert "0 CLANKS" not in explicit_none
+
+    zeros = _status_bar(
+        {"registered_clanks": 0, "active_missions": 0, "blocked_missions": 0}
+    )
+    assert "0 CLANKS" in zeros
+    assert "0 ACTIVE" in zeros
+    assert "0 BLOCKED" in zeros
+    assert "UNKNOWN CLANKS" not in zeros
+
+    positive = _status_bar(
+        {"registered_clanks": 18, "active_missions": 3, "blocked_missions": 2}
+    )
+    assert "18 CLANKS" in positive
+    assert "3 ACTIVE" in positive
+    assert "2 BLOCKED" in positive
+
+    fleet = fleet_html(
+        {
+            "summary": {"registered_clanks": 18, "active_missions": 3, "blocked_missions": 0},
+            "snapshot": {"max_ledger_seq": 9, "generated_at": "t"},
+            "mode": {"label": "SNAPSHOT"},
+            "rows": [],
+            "attention": {},
+        }
+    )
+    fleet_header = _header(fleet)
+    assert "18 CLANKS" in fleet_header
+    assert "3 ACTIVE" in fleet_header
+    assert "0 BLOCKED" in fleet_header
+    assert "UNKNOWN CLANKS" not in fleet_header
+
+    attn_header = _header(attention_html({"snapshot": {}, "mode": {"label": "SNAPSHOT"}, "items": []}))
+    assert "UNKNOWN CLANKS" in attn_header
+    assert "UNKNOWN ACTIVE" in attn_header
+    assert "UNKNOWN BLOCKED" in attn_header
+    assert "0 CLANKS" not in attn_header
+
+    sess_header = _header(sessions_html({"snapshot": {}, "mode": {"label": "SNAPSHOT"}, "sessions": []}))
+    assert "UNKNOWN CLANKS" in sess_header
+    assert "UNKNOWN ACTIVE" in sess_header
+    assert "UNKNOWN BLOCKED" in sess_header
+    assert "0 CLANKS" not in sess_header
+
+    status_header = _header(
+        status_html(
+            {
+                "ok": True,
+                "mode": "read-only",
+                "terminal": "beta",
+                "connection": "per-request",
+                "snapshot": {"generated_at": "t", "max_ledger_seq": 1, "ledger_event_count": 1},
+            }
+        )
+    )
+    assert "UNKNOWN CLANKS" in status_header
+    assert "UNKNOWN ACTIVE" in status_header
+    assert "UNKNOWN BLOCKED" in status_header
+    assert "0 CLANKS" not in status_header
+    assert "TERMINAL STATUS" in status_html(
+        {
+            "ok": True,
+            "mode": "read-only",
+            "terminal": "beta",
+            "connection": "per-request",
+            "snapshot": {},
+        }
+    )
+
+    dossier = dossier_html(
+        {
+            "identity": {"slug": "oem-radar", "display_name": "OEM Radar", "clank_id": "id-oem"},
+            "now": {"mission_state": "ACTIVE", "open_sessions": []},
+            "snapshot": {"max_ledger_seq": 4, "generated_at": "t"},
+            "mode": {"label": "SNAPSHOT"},
+            "timeline": [],
+        }
+    )
+    dossier_header = _header(dossier)
+    assert "UNKNOWN CLANKS" in dossier_header
+    assert "UNKNOWN ACTIVE" in dossier_header
+    assert "UNKNOWN BLOCKED" in dossier_header
+    assert "1 CLANKS" not in dossier_header
+    assert "1 ACTIVE" not in dossier_header
+    assert "0 BLOCKED" not in dossier_header
+
+    git_calls: list[str] = []
+    github_calls: list[str] = []
+    harvest_calls: list[str] = []
+    store = open_store(tmp_path / "header.db", actor="cursor", clock=FrozenClock(T0))
+    _seed_fleet(store, tmp_path)
+    before = ledger_fingerprint(store)
+    monkeypatch.setattr(
+        "clankops.gitinspect.inspect_git",
+        lambda *a, **k: git_calls.append("git") or {"is_git": False},
+    )
+    monkeypatch.setattr(
+        "clankops.githubinspect.inspect_github",
+        lambda *a, **k: github_calls.append("gh") or {"ok": False},
+    )
+    monkeypatch.setattr(
+        "clankops.harvest.harvest_local_git",
+        lambda *a, **k: harvest_calls.append("harvest") or {},
+    )
+    home = dispatch(store, "GET", "/", now=T0, census=_census())[2].decode("utf-8")
+    home_header = _header(home)
+    assert "5 CLANKS" in home_header
+    assert "3 ACTIVE" in home_header
+    assert "1 BLOCKED" in home_header
+    assert "0 CLANKS" not in home_header
+
+    for path in ("/attention", "/sessions", "/health", "/clank/oem-radar"):
+        text = dispatch(store, "GET", path, now=T0, census=_census())[2].decode("utf-8")
+        header = _header(text)
+        assert "UNKNOWN CLANKS" in header, path
+        assert "UNKNOWN ACTIVE" in header, path
+        assert "UNKNOWN BLOCKED" in header, path
+        assert "0 CLANKS" not in header, path
+        assert "5 CLANKS" not in header, path
+        assert "1 CLANKS" not in header, path
+        if path == "/health":
+            assert "TERMINAL STATUS" in text
+            assert "not fleet/source operational health" in text
+
     assert ledger_fingerprint(store) == before
     assert git_calls == []
     assert github_calls == []
