@@ -43,6 +43,7 @@ from clankops.terminal_views import (
     mode_label,
     session_dossier_html as _session_dossier_html,
     sessions_html,
+    status_html,
 )
 from clankops.timefmt import format_age, parse_duration, parse_utc
 
@@ -136,6 +137,17 @@ def _snapshot(store: Store, now) -> dict[str, Any]:
         "ledger_event_count": fp["event_count"],
         "max_ledger_seq": fp["max_ledger_seq"],
         "consistency": "read-time; not a transactionally frozen multi-page snapshot",
+    }
+
+
+def _health_payload(store: Store, now) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "mode": "read-only",
+        "terminal": "beta",
+        "stale_after": DEFAULT_STALE_LABEL,
+        "connection": "per-request",
+        "snapshot": _snapshot(store, now),
     }
 
 
@@ -431,20 +443,17 @@ def dispatch(
                     )
                 ),
             )
-        if route == "/health":
+        if route in {"/health", "/status"}:
+            return (
+                HTTPStatus.OK,
+                "text/html; charset=utf-8",
+                status_html(_health_payload(store, now)).encode("utf-8"),
+            )
+        if route == "/api/health":
             return (
                 HTTPStatus.OK,
                 "application/json; charset=utf-8",
-                _json(
-                    {
-                        "ok": True,
-                        "mode": "read-only",
-                        "terminal": "beta",
-                        "stale_after": DEFAULT_STALE_LABEL,
-                        "connection": "per-request",
-                        "snapshot": _snapshot(store, now),
-                    }
-                ),
+                _json(_health_payload(store, now)),
             )
         if route.startswith("/api/clank/") and route.endswith("/reconcile"):
             slug = unquote(route.removeprefix("/api/clank/").removesuffix("/reconcile").rstrip("/"))

@@ -210,17 +210,55 @@ def _status_bar(status: dict[str, Any]) -> str:
   <span>{html.escape(str(clanks or 0))} CLANKS</span>
   <span>{html.escape(str(active or 0))} ACTIVE</span>
   <span>{html.escape(str(blocked or 0))} BLOCKED</span>
-  <span class="muted">{html.escape(generated)}</span>
+  <span class="muted">snapshot at {html.escape(str(generated))}</span>
   <span class="muted">view {view}{(' · q=' + q) if q else ''}</span>
 </div>
 <div class="nav status">
   <a href="/">fleet</a>
   <a href="/attention">attention</a>
   <a href="/sessions">sessions</a>
-  <a href="/health">health</a>
+  <a href="/health">status</a>
   <span class="muted">read-only · GET/HEAD · no harvest · no GitHub unless ?github=1</span>
 </div>
 """
+
+
+def status_html(payload: dict[str, Any]) -> str:
+    """Terminal process/read-path status. Not fleet or source operational health."""
+    snap = payload.get("snapshot") or {}
+    generated = _unknown(snap.get("generated_at"))
+    status = {
+        "mode_label": "SNAPSHOT",
+        "max_ledger_seq": snap.get("max_ledger_seq"),
+        "generated_at": snap.get("generated_at"),
+        "view": "status",
+    }
+    rows = (
+        ("mode", payload.get("mode") or "read-only"),
+        ("Terminal version", payload.get("terminal") or "beta"),
+        ("DB / read path", "readable" if payload.get("ok") else "unavailable"),
+        ("connection", payload.get("connection") or "per-request"),
+        ("ledger event count", snap.get("ledger_event_count")),
+        ("max ledger seq", snap.get("max_ledger_seq")),
+        ("snapshot generated time", generated),
+    )
+    cells = "".join(
+        "<tr>"
+        f"<th>{html.escape(str(label))}</th>"
+        f"<td>{html.escape(_unknown(value))}</td>"
+        "</tr>"
+        for label, value in rows
+    )
+    body = f"""
+<h1>TERMINAL STATUS</h1>
+<p>This describes the ClankOps Terminal process/read path. It is not fleet/source operational health.</p>
+<table class="grid">
+  <thead><tr><th>field</th><th>evidence</th></tr></thead>
+  <tbody>{cells}</tbody>
+</table>
+<p class="muted">Machine-readable copy: <a href="/api/health">/api/health</a>. No collectors, Git, GitHub, or Harvest run from this page.</p>
+"""
+    return page("Terminal status · ClankOps Terminal Beta", body, status=status)
 
 
 def session_dossier_html(session: dict[str, Any]) -> str:
