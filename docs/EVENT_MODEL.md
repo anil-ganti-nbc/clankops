@@ -75,7 +75,7 @@ Ordinary Mission lifecycle uses `MISSION_STATE_CHANGED` and `MISSION_TRANSITIONS
 
 Invalid transitions raise; they do not write events.
 
-Reconciliation (`MISSION_STATE_RECONCILED`) may set projected state to `COMPLETED` from `PLANNED`, `PAUSED`, or `BLOCKED` without passing through `ACTIVE`. That is not a `MISSION_TRANSITIONS` change. Terminal states are not casually rewritten.
+Reconciliation (`MISSION_STATE_RECONCILED`) may set projected state to `COMPLETED` from `PLANNED`, `PAUSED`, `BLOCKED`, or stale `ACTIVE` (zero open Sessions). That is not a `MISSION_TRANSITIONS` change. It does not fabricate an ACTIVE interval, Session, checkpoint, or handoff. Ordinary live `ACTIVE -> COMPLETED` remains the cooperative path. Terminal states are not casually rewritten.
 
 ## Feature states
 

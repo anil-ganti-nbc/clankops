@@ -63,8 +63,10 @@ of that same command. Remote GitHub freshness remains out of scope.
   without closing the Session. Child exit is not a handoff. Missing
   evidence stays UNKNOWN, never RUNNING.
 - Foundation 11 reconciles stale projected Mission state from explicit
-  evidence (`MISSION_STATE_RECONCILED`). Session close is not a recorded
-  handoff. PR merge is not Mission completion unless reconciled.
+  evidence (`MISSION_STATE_RECONCILED`), including stale ACTIVE when no
+  Session is open. Session close is not a recorded handoff. PR merge is
+  not Mission completion unless reconciled. Ordinary live ACTIVE
+  completion remains the cooperative path.
 - Inject the [agent logging contract](AGENT_LOGGING_CONTRACT.md) into Cursor/Codex/Claude/GLM/Grok launchers
 - Session auto-start from agent identity
 - Refuse to start Clank work until `brief` has been read

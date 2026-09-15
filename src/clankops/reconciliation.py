@@ -2,7 +2,8 @@
 
 Corrects present projected knowledge. Does not rewrite history, fabricate
 an ACTIVE interval, create a Session, or pretend ClankOps observed the
-completion live. Ordinary Mission transitions remain unchanged.
+completion live. Ordinary live ACTIVE -> COMPLETED remains the cooperative
+path. Stale ACTIVE may be reconciled only with zero open Sessions.
 """
 
 from __future__ import annotations
@@ -19,7 +20,12 @@ from clankops.timefmt import parse_utc
 
 RECORDER = "clankops.reconciliation"
 ALLOWED_FROM = frozenset(
-    {MissionState.PLANNED, MissionState.PAUSED, MissionState.BLOCKED}
+    {
+        MissionState.PLANNED,
+        MissionState.PAUSED,
+        MissionState.BLOCKED,
+        MissionState.ACTIVE,
+    }
 )
 ALLOWED_TO = frozenset({MissionState.COMPLETED})
 RECONCILIATION_SOURCE = EventSource.USER
@@ -251,7 +257,8 @@ def reconcile_mission(
         if current not in ALLOWED_FROM:
             raise InvalidTransitionError(
                 f"cannot reconcile mission {row['display_id']} from {current} to {target}; "
-                "ordinary transitions remain for ACTIVE work, and terminal history is not rewritten"
+                "ordinary live ACTIVE -> COMPLETED remains the cooperative path, "
+                "and terminal history is not rewritten"
             )
         open_ids = _open_session_ids(store, row["mission_id"])
         if open_ids:

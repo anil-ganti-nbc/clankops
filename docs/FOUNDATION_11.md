@@ -48,7 +48,7 @@ Reconciliation is not a looser transition table.
 | When | ClankOps observed the lifecycle change | present projected state is stale vs demonstrable evidence |
 | Session | leaving ACTIVE work ends open Sessions | never creates or ends a Session |
 | Timestamp | when the transition was recorded | when reconciliation was recorded |
-| `ACTIVE -> COMPLETED` | yes, keep using this | not in this slice |
+| `ACTIVE -> COMPLETED` | yes, keep using this for live cooperative completion | yes, historical correction only: zero open Sessions, explicit USER action, evidence-backed |
 
 The distinction survives forever in the ledger.
 
@@ -60,8 +60,11 @@ supported by evidence:
 - `PLANNED -> COMPLETED`
 - `PAUSED -> COMPLETED`
 - `BLOCKED -> COMPLETED`
-
-`ACTIVE -> COMPLETED` remains the ordinary complete path.
+- `ACTIVE -> COMPLETED` when every Session on that Mission is already
+  closed. This does not fabricate an ACTIVE interval: the Mission already
+  projects ACTIVE. It does not create a Session, checkpoint, handoff, or
+  `next_action`. Ordinary live `ACTIVE -> COMPLETED` remains
+  `transition_mission` / `complete` / `handoff --state COMPLETED`.
 
 Not added:
 
@@ -247,7 +250,7 @@ Reconciliation is one reserved write:
 
 1. `BEGIN IMMEDIATE`
 2. re-read the Mission under the lock
-3. validate current state (`PLANNED` / `PAUSED` / `BLOCKED`)
+3. validate current state (`PLANNED` / `PAUSED` / `BLOCKED` / `ACTIVE`)
 4. refuse if any Session on that Mission is still open
 5. append `MISSION_STATE_RECONCILED` with `from_state` equal to the
    locked observation
