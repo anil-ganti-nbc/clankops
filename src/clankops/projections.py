@@ -288,6 +288,26 @@ def _apply_task_created(conn: sqlite3.Connection, event: Event) -> None:
     )
 
 
+def _apply_factory_state(conn: sqlite3.Connection, event: Event) -> None:
+    conn.execute(
+        """
+        INSERT INTO factory_missions(mission_id, clank_id, state_json, event_id, ledger_seq, updated_utc)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(mission_id) DO UPDATE SET
+            state_json=excluded.state_json, event_id=excluded.event_id,
+            ledger_seq=excluded.ledger_seq, updated_utc=excluded.updated_utc
+        """,
+        (
+            event.mission_id,
+            event.clank_id,
+            json.dumps(event.payload["state"], sort_keys=True, ensure_ascii=False),
+            event.event_id,
+            event.ledger_seq,
+            event.ts_utc,
+        ),
+    )
+
+
 def _apply_task_state_changed(conn: sqlite3.Connection, event: Event) -> None:
     conn.execute(
         "UPDATE tasks SET state = ?, updated_utc = ? WHERE task_id = ?",
@@ -620,6 +640,11 @@ def _apply_local_git_harvest_completed(conn: sqlite3.Connection, event: Event) -
 
 
 HANDLERS: dict[str, Handler] = {
+    EventType.FACTORY_FROZEN: _apply_factory_state,
+    EventType.FACTORY_CANDIDATE_SELECTED: _apply_factory_state,
+    EventType.FACTORY_GATE_RECORDED: _apply_factory_state,
+    EventType.FACTORY_PHASE_ADVANCED: _apply_factory_state,
+    EventType.FACTORY_HERMES_REVIEW_RECORDED: _apply_factory_state,
     EventType.CLANK_REGISTERED: _apply_clank_registered,
     EventType.CLANK_ALIAS_ADDED: _apply_clank_alias_added,
     EventType.CLANK_REF_UPDATED: _apply_clank_ref_updated,

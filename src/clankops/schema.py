@@ -455,9 +455,24 @@ CREATE INDEX idx_local_git_harvest_results_clank_seq
     ON local_git_harvest_results(clank_id, ledger_seq);
 """,
     ),
+    (
+        10,
+        "factory_hermes_bridge",
+        """
+CREATE TABLE factory_missions (
+    mission_id TEXT PRIMARY KEY REFERENCES missions(mission_id),
+    clank_id TEXT NOT NULL REFERENCES clanks(clank_id),
+    state_json TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    ledger_seq INTEGER NOT NULL,
+    updated_utc TEXT NOT NULL
+);
+""",
+    ),
 ]
 
 PROJECTION_TABLES = (
+    "factory_missions",
     "local_git_harvest_results",
     "local_git_harvest_runs",
     "local_git_observations",

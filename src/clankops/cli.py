@@ -350,6 +350,55 @@ def cmd_mission_reconcile(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_factory(args: argparse.Namespace) -> int:
+    from clankops import factory
+
+    action = args.factory_action
+    store = open_readonly_store(args.db) if action == "status" else _store(args)
+    try:
+        if action == "freeze":
+            try:
+                manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+                contract = Path(args.contract).read_bytes()
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ValidationError("cannot read factory manifest or contract") from exc
+            if not isinstance(manifest, dict):
+                raise ValidationError("factory manifest must be a JSON object")
+            result = factory.freeze(store, args.mission, manifest, contract, actor=args.actor)
+        elif action == "status":
+            result = factory.status(store, args.mission)
+        elif action == "candidate":
+            result = factory.select_candidate(store, args.mission, args.sha, actor=args.actor)
+        elif action == "gate":
+            result = factory.record_gate(store, args.mission, args.key, args.verdict,
+                                         args.evidence_ref, args.basis, actor=args.actor)
+        elif action == "advance":
+            result = factory.advance(store, args.mission, args.to, expect_phase=args.expect_phase,
+                                     expect_candidate=args.expect_candidate, actor=args.actor)
+        elif action == "hermes-review":
+            from clankops.hermes_bridge import review
+
+            path = args.checkout or store.canonical_local_path(
+                store.resolve_mission(args.mission)["clank_id"]
+            )
+            if not path:
+                raise ValidationError("provide --checkout for Hermes review")
+            result = review(store, args.mission, candidate_sha=args.candidate_sha,
+                            review_id=args.review_id,
+                            checkout=Path(path), prompt_file=Path(args.prompt_file),
+                            contract_file=Path(args.contract),
+                            hermes=args.hermes, model=args.model, provider=args.provider,
+                            timeout=args.timeout, actor=args.actor)
+        else:
+            raise ClankOpsError(f"unknown factory action {action}")
+    finally:
+        store.conn.close()
+    _print(f"factory {action}: {args.mission}", as_json=args.json, payload=result)
+    if action == "hermes-review" and not result["review"]["completed_call"]:
+        return 2
+    return 0
+
+
 def _git_working_label(git: dict[str, Any]) -> str | None:
     if git.get("dirty") is True:
         return f"dirty ({git.get('dirty_count')} paths)"
@@ -1718,6 +1767,46 @@ def build_parser() -> argparse.ArgumentParser:
         help="operator-confirmed, github, ci, deployment, reconstructed, local_git, artefact",
     )
     p.set_defaults(func=cmd_mission_reconcile)
+
+    factory_cmd = sub.add_parser("factory", help="frozen Mission phases, gates, and Hermes review")
+    fsub = factory_cmd.add_subparsers(dest="factory_action", required=True)
+    p = fsub.add_parser("freeze", help="freeze a contract and transition graph on an existing Mission")
+    p.add_argument("mission")
+    p.add_argument("--manifest", required=True, help="JSON manifest with phases, transitions, gates")
+    p.add_argument("--contract", required=True, help="immutable contract file to hash")
+    p.set_defaults(func=cmd_factory)
+    p = fsub.add_parser("status", help="read-only factory state")
+    p.add_argument("mission")
+    p.set_defaults(func=cmd_factory)
+    p = fsub.add_parser("candidate", help="select an exact candidate commit")
+    p.add_argument("mission")
+    p.add_argument("sha")
+    p.set_defaults(func=cmd_factory)
+    p = fsub.add_parser("gate", help="record a gate verdict with an explicit evidence basis")
+    p.add_argument("mission")
+    p.add_argument("key")
+    p.add_argument("verdict", choices=["PASS", "FAIL"])
+    p.add_argument("--evidence-ref", required=True)
+    p.add_argument("--basis", required=True, choices=["USER", "LOCAL_GIT", "GITHUB", "CI", "DEPLOYMENT", "SYSTEM"])
+    p.set_defaults(func=cmd_factory)
+    p = fsub.add_parser("advance", help="advance only along a frozen edge with passed gates")
+    p.add_argument("mission")
+    p.add_argument("--to", required=True)
+    p.add_argument("--expect-phase", required=True)
+    p.add_argument("--expect-candidate")
+    p.set_defaults(func=cmd_factory)
+    p = fsub.add_parser("hermes-review", help="run Sol via Hermes against a clean exact checkout")
+    p.add_argument("mission")
+    p.add_argument("--candidate-sha", required=True)
+    p.add_argument("--review-id", required=True, help="stable idempotency key for this Sol review")
+    p.add_argument("--checkout", help="candidate worktree (defaults to canonical local path)")
+    p.add_argument("--prompt-file", required=True)
+    p.add_argument("--contract", required=True, help="frozen contract file (hash checked again)")
+    p.add_argument("--hermes", default="hermes", help="Hermes executable")
+    p.add_argument("--model", default="gpt-5.6-sol")
+    p.add_argument("--provider", default="openai-codex")
+    p.add_argument("--timeout", type=int, default=1200)
+    p.set_defaults(func=cmd_factory)
 
     work = sub.add_parser("work", help="start or resume a Cursor development Session")
     wsub = work.add_subparsers(dest="work_action", required=True)

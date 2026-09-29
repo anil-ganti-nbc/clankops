@@ -1,5 +1,7 @@
 # ClankOps
 
+For the local Hermes review and factory phase bridge, see [docs/HERMES_BRIDGE.md](docs/HERMES_BRIDGE.md).
+
 Development control plane and institutional memory for the Clank ecosystem.
 
 Foundation 5 can attach that observation to the open Mission as an artefact. Git corroboration from Foundation 3 is unchanged. Reconcile stays read-only.

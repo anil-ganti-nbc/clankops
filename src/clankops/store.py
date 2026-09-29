@@ -697,6 +697,8 @@ class Store:
                 raise InvalidTransitionError(
                     f"cannot transition mission {row['display_id']} from {current} to {target}"
                 )
+            if target == MissionState.COMPLETED:
+                self._assert_factory_complete(row["mission_id"])
             if target in MISSION_WORK_STOPPED:
                 self._end_open_sessions(
                     row["mission_id"],
@@ -727,6 +729,16 @@ class Store:
                 self.conn.rollback()
             raise
         return self.resolve_mission(row["mission_id"])
+
+    def _assert_factory_complete(self, mission_id: str) -> None:
+        row = self.conn.execute(
+            "SELECT state_json FROM factory_missions WHERE mission_id = ?", (mission_id,)
+        ).fetchone()
+        if row is not None and (
+            (state := json.loads(row[0]))["phase"] != "CLOSED" or
+            state.get("terminal_result") != "PASS"
+        ):
+            raise ValidationError("factory gates have not reached PASS; Mission cannot complete")
 
     def pause_mission(self, mission: str, **kwargs: Any) -> dict[str, Any]:
         return self.transition_mission(mission, MissionState.PAUSED, **kwargs)
@@ -1665,6 +1677,8 @@ class Store:
         target = str(to_state)
         if target == MissionState.ACTIVE:
             raise ValidationError("handoff cannot leave the Mission ACTIVE")
+        if target == MissionState.COMPLETED:
+            self._assert_factory_complete(self.resolve_mission(mission)["mission_id"])
         checkpoint = self.record_checkpoint(
             mission,
             completed=completed,

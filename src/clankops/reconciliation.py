@@ -260,6 +260,7 @@ def reconcile_mission(
                 "ordinary live ACTIVE -> COMPLETED remains the cooperative path, "
                 "and terminal history is not rewritten"
             )
+        store._assert_factory_complete(row["mission_id"])
         open_ids = _open_session_ids(store, row["mission_id"])
         if open_ids:
             listed = ", ".join(open_ids)
